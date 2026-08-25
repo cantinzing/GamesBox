@@ -256,3 +256,9 @@ This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled 
 - Metadata fetching depends on third-party APIs (IGDB / SteamGridDB); obtain keys and enter them in Settings.
 - Local scanning uses heuristic filtering on executable names / version info and may occasionally misclassify an edge-case helper binary.
 - Only x64 is verified; the Win32 (32-bit) and ARM64 configs are available but untested.
+
+---
+
+## License
+
+This project is open source under the **MIT License** — see the [`LICENSE`](LICENSE) file at the repository root. In short: you may freely use, copy, modify, and distribute it (including closed-source or commercial use) as long as the copyright and permission notices are retained, and the software is provided “as is” without warranty of any kind.
