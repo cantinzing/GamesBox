@@ -139,7 +139,7 @@
                     <!-- 操作 -->
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="扫描" Tag="i18n:import.scan" Style="{StaticResource BloomButtonStyle}" Click="ScanButton_Click" />
-                        <Button Content="导入已选" Tag="i18n:import.importSelected" Style="{StaticResource BloomButtonStyle}" Click="ImportButton_Click" />
+                        <Button x:Name="ImportButton" Content="导入已选" Tag="i18n:import.importSelected" Style="{StaticResource BloomButtonStyle}" Click="ImportButton_Click" />
                     </StackPanel>
 
                     <!-- 候选列表 -->

@@ -14,6 +14,11 @@
   Build & install (incl. 32/64-bit notes and the MSIX sideload flow): see the docs above in your language.
 - 主要支持 **64 位（x64）Windows 10（最低 17763）/ 11**；32 位（x86）与 ARM64 配置可用但未验证。
 
+## 激活与授权 / Activation
+
+付费授权采用纯离线激活（机器码 + 激活码）。获取激活码的方法与生成器见各语言文档的「激活与授权」小节。
+Paid license uses offline machine-code + activation-code. How to mint codes and the generator tools are in the "Activation & Licensing" section of the language docs.
+
 ## 开源协议 / License
 
 本项目以 [GPL-3.0 协议](LICENSE) 开源（可用于商业，但须开源）。
