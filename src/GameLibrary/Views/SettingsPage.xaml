@@ -84,6 +84,8 @@
             <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="#99FFFFFF" />
             <Setter Property="MinWidth" Value="64" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template" Value="{StaticResource RoundedToggleButtonTemplate}" />
         </Style>
         <!-- glass 按钮：border-white/10 bg-white/5 圆角 8 -->
