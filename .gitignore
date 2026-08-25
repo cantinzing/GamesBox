@@ -6,6 +6,10 @@ obj/
 bin/
 build/
 AppPackages/
+StorePackages/
+installer-output/
+BundleArtifacts/
+GameLibrary-portable-win-x64.zip
 *.user
 *.suo
 .vs/

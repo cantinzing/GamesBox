@@ -197,6 +197,21 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ---
 
+## Download from GitHub Actions (CI artifacts)
+
+Pushing to `main` or triggering `workflow_dispatch` builds and packages the app on `windows-2022` and produces three artifacts (download them from the Artifacts section of the corresponding run):
+
+- **GameLibrary-portable-win-x64** (self-contained zip)
+  - Unzip and double-click `GameLibrary.exe` to run — no runtime install or certificate needed. Works on a clean Windows 10 / 11; on a machine that also has the registered WindowsAppRuntime framework package it may hit the `0xC0000602` conflict (see Local development notes, a known limitation).
+- **GameLibrary-setup-win-x64** (traditional installer `setup.exe`)
+  - Double-click to run the install wizard; it installs to `C:\Program Files\GameLibrary` by default and creates Start Menu / desktop shortcuts (admin elevation is requested). The installed files are the same as the self-contained zip; the same `0xC0000602` runtime limitation applies (clean target machines are fine).
+- **GameLibrary-MSIX-x64** (sideload MSIX)
+  - See the “MSIX sideload” flow above: trust the `GameLibrary_TemporaryKey.pfx` cert first, then `Add-AppxPackage`.
+- **GameLibrary-store-msixbundle** (Store submission package, unsigned `.msixbundle`)
+  - For submitting to the Microsoft Store. Before uploading to Partner Center, change the `Identity Name` and `Publisher` in `src/GameLibrary.Package/Package.appxmanifest` to the Store-reserved values (also align `PublisherDisplayName` with your Store publisher name), then re-run CI to get the matching package. The package is built framework-dependent (no bundled runtime) and **unsigned locally**, so the Store re-signs it on publish.
+
+---
+
 ## Usage
 
 1. **Import games** — click “Import” from the home or library page, pick a source (Local / Steam / Epic). For local, browse a folder, choose scan depth, then select candidates to import.

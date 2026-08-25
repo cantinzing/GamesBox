@@ -36,16 +36,64 @@ jobs:
         run: |
           msbuild GameLibrary.sln /t:Restore /p:Configuration=Release /p:Platform=x64
 
-      - name: Build MSIX package
+      # 1) Sideload MSIX (self-signed; for manual sideload install)
+      #    WindowsAppSDKSelfContained=  -> keep the package framework-dependent (no bundled runtime)
+      - name: Build sideload MSIX
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained= "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
 
-      - name: Upload MSIX artifact
+      # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it)
+      - name: Build store bundle
+        shell: powershell
+        run: |
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+
+      # 3) Self-contained portable build (no framework package needed on target machine)
+      - name: Build self-contained portable
+        shell: powershell
+        run: |
+          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /t:Rebuild /m
+
+      - name: Zip portable
+        shell: powershell
+        run: |
+          Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+
+      - name: Setup Inno Setup
+        uses: jrsoftware/setup-inno-setup@v1
+
+      - name: Build installer (setup.exe)
+        shell: powershell
+        run: |
+          iscc "installer\GameLibrary.iss" /DMySourceDir="$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="$env:GITHUB_WORKSPACE\installer-output" /DMyAppVersion="1.0.0.0"
+
+      - name: Upload setup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameLibrary-setup-win-x64
+          path: installer-output/GameLibrary-Setup-x64.exe
+          if-no-files-found: error
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameLibrary-portable-win-x64
+          path: GameLibrary-portable-win-x64.zip
+          if-no-files-found: error
+
+      - name: Upload sideload MSIX artifact
         uses: actions/upload-artifact@v4
         with:
           name: GameLibrary-MSIX-x64
           path: AppPackages/**
+          if-no-files-found: error
+
+      - name: Upload store bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameLibrary-store-msixbundle
+          path: StorePackages/**
           if-no-files-found: error
 
       - name: Upload generated files (diagnostic)

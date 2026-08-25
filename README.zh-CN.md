@@ -201,6 +201,21 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ---
 
+## 从 GitHub Actions 下载产物（CI 自动打包）
+
+推送 `main` 分支或手动触发 `workflow_dispatch` 后，CI 会在 `windows-2022` 上完成还原与构建，并产出三个 Artifact（在 Actions 页面对应任务的 Artifacts 中下载）：
+
+- **GameLibrary-portable-win-x64**（自包含压缩包）
+  - 解压后直接双击 `GameLibrary.exe` 即可运行，无需安装运行时或证书。适用于干净的 Windows 10 / 11；若在已注册 WindowsAppRuntime 框架包的机器上运行，可能触发 `0xC0000602` 冲突（见本地开发注意事项，属已知限制）。
+- **GameLibrary-setup-win-x64**（传统安装向导 `setup.exe`）
+  - 双击运行安装向导，默认安装到 `C:\Program Files\GameLibrary`，并在开始菜单 / 桌面创建快捷方式（安装时会请求管理员提权）。其安装内容与自包含压缩包一致，运行时同样受 `0xC0000602` 限制影响（干净目标机正常）。
+- **GameLibrary-MSIX-x64**（侧载 MSIX）
+  - 见上方“MSIX 侧载”流程：先信任证书 `GameLibrary_TemporaryKey.pfx`，再用 `Add-AppxPackage` 安装。
+- **GameLibrary-store-msixbundle**（商店提交包，未签名的 `.msixbundle`）
+  - 用于提交 Microsoft Store。上传到 Partner Center 前，请把 `src/GameLibrary.Package/Package.appxmanifest` 中的 `Identity Name` 与 `Publisher` 改为商店预留的值（同时建议把 `PublisherDisplayName` 对齐为商店发布者名称），再重新触发 CI 得到对应包。该包已设置为“框架依赖”（不含自包含运行时）且**未本地签名**，由商店在上架时重新签名。
+
+---
+
 ## 使用说明
 
 1. **导入游戏** — 首页或库页点击“导入”，在向导中选择来源（本地文件 / Steam / Epic）。本地来源可浏览目录并选择扫描深度，扫描后勾选候选游戏导入。
