@@ -451,6 +451,16 @@ namespace winrt::GameLibrary::implementation
             m_confirmDialog.Content(box_value(L"确定要移除本机的激活状态吗？\n移除后需重新激活才能使用导入功能。"));
             m_confirmDialog.PrimaryButtonText(L"确定移除");
             m_confirmDialog.CloseButtonText(L"取消");
+
+            auto acrylic = winrt::Microsoft::UI::Xaml::Media::AcrylicBrush();
+            acrylic.TintColor(winrt::Windows::UI::Color{ 0xCC, 0x14, 0x18, 0x2B });
+            acrylic.TintOpacity(0.55);
+            acrylic.FallbackColor(winrt::Windows::UI::Color{ 0xCC, 0x14, 0x18, 0x2B });
+            m_confirmDialog.Background(acrylic);
+            m_confirmDialog.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius(12));
+            m_confirmDialog.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush{ winrt::Windows::UI::Color{ 0x3C, 0xA6, 0xB6, 0xD8 } });
+            m_confirmDialog.BorderThickness(winrt::Microsoft::UI::Xaml::Thickness(1));
+
             m_confirmDialog.PrimaryButtonClick([this](IInspectable const&, ContentDialogButtonClickEventArgs const&)
             {
                 Licensing::LicenseManager::Reset();
