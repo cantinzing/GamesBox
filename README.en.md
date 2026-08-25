@@ -261,4 +261,4 @@ This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled 
 
 ## License
 
-This project is licensed under **CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International)** — see the [`LICENSE`](LICENSE) file at the repository root. You may share and adapt it, provided you give credit, **do not use it for any commercial purpose**, and distribute derivatives under the same license. The software is provided “as is” without warranty.
+This project is licensed under the **GNU General Public License v3 (GPL-3.0)** — see the [`LICENSE`](LICENSE) file at the repository root. You may use, modify, and distribute it (including commercial use), provided that any distribution (including modified versions) is also released under GPL-3.0 with source code available. The software is provided “as is” without warranty.

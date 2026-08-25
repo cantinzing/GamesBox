@@ -16,5 +16,5 @@
 
 ## 开源协议 / License
 
-本项目以 [CC BY-NC-SA 4.0 协议](LICENSE) 发布（禁止商业用途）。
+本项目以 [GPL-3.0 协议](LICENSE) 开源（可用于商业，但须开源）。
   Primary support is **64-bit (x64) Windows 10 (MinVersion 17763) / 11**; Win32 (x86) and ARM64 configs exist but are unverified.
