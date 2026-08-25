@@ -60,13 +60,15 @@ jobs:
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
 
-      - name: Setup Inno Setup
-        uses: jrsoftware/setup-inno-setup@v1
-
       - name: Build installer (setup.exe)
         shell: powershell
         run: |
-          iscc "installer\GameLibrary.iss" /DMySourceDir="$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="$env:GITHUB_WORKSPACE\installer-output" /DMyAppVersion="1.0.0.0"
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") -and -not (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress --allow-downgrade
+          }
+          $isccDir = @("C:\Program Files (x86)\Inno Setup 6", "C:\Program Files\Inno Setup 6") | Where-Object { Test-Path "$_\ISCC.exe" } | Select-Object -First 1
+          if (-not $isccDir) { throw "ISCC.exe not found after install" }
+          & "$isccDir\ISCC.exe" "installer\GameLibrary.iss" /DMySourceDir="$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="$env:GITHUB_WORKSPACE\installer-output" /DMyAppVersion="1.0.0.0"
 
       - name: Upload setup artifact
         uses: actions/upload-artifact@v4
