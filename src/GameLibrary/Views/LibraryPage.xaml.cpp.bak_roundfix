@@ -1,0 +1,242 @@
+#include "pch.h"
+#include "LibraryPage.xaml.h"
+#if __has_include("LibraryPage.g.cpp")
+#include "LibraryPage.g.cpp"
+#endif
+
+#include "../Services/AppServices.h"
+
+#include <winrt/Microsoft.UI.h>
+#include <winrt/Microsoft.UI.Xaml.h>
+#include <winrt/Microsoft.UI.Xaml.Navigation.h>
+#include <winrt/Microsoft.UI.Xaml.Controls.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.Xaml.Interop.h>
+
+#include <algorithm>
+#include <string_view>
+
+using namespace winrt;
+using namespace Microsoft::UI;
+using namespace Microsoft::UI::Xaml;
+using namespace Microsoft::UI::Xaml::Controls;
+using namespace Microsoft::UI::Xaml::Media;
+using namespace Microsoft::UI::Xaml::Navigation;
+using namespace GameLibrary;
+
+namespace winrt::GameLibrary::implementation
+{
+    namespace
+    {
+        SolidColorBrush MakeBrush(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
+        {
+            return SolidColorBrush(ColorHelper::FromArgb(a, r, g, b));
+        }
+
+        // 2:3 竖版封面渐变（品牌蓝紫）
+        LinearGradientBrush MakeCoverBrush()
+        {
+            auto brush = LinearGradientBrush();
+            brush.StartPoint(winrt::Windows::Foundation::Point{ 0, 0 });
+            brush.EndPoint(winrt::Windows::Foundation::Point{ 1, 1 });
+            auto s1 = GradientStop();
+            s1.Color(ColorHelper::FromArgb(255, 0x2E, 0x3F, 0x64));
+            s1.Offset(0.0);
+            auto s2 = GradientStop();
+            s2.Color(ColorHelper::FromArgb(255, 0x1B, 0x2B, 0x46));
+            s2.Offset(1.0);
+            brush.GradientStops().Append(s1);
+            brush.GradientStops().Append(s2);
+            return brush;
+        }
+
+        // 底部信息层渐变
+        LinearGradientBrush MakeOverlayBrush()
+        {
+            auto brush = LinearGradientBrush();
+            brush.StartPoint(winrt::Windows::Foundation::Point{ 0, 0 });
+            brush.EndPoint(winrt::Windows::Foundation::Point{ 0, 1 });
+            auto s1 = GradientStop();
+            s1.Color(ColorHelper::FromArgb(0xF2, 0x12, 0x13, 0x18));
+            s1.Offset(0.0);
+            auto s2 = GradientStop();
+            s2.Color(ColorHelper::FromArgb(0x00, 0x12, 0x13, 0x18));
+            s2.Offset(1.0);
+            brush.GradientStops().Append(s1);
+            brush.GradientStops().Append(s2);
+            return brush;
+        }
+    }
+
+    LibraryPage::LibraryPage()
+    {
+        InitializeComponent();
+    }
+
+    void LibraryPage::OnNavigatedTo(NavigationEventArgs const&)
+    {
+        Refresh();
+    }
+
+    void LibraryPage::Refresh()
+    {
+        auto& services = Services::AppServices::Instance();
+        if (!services.Initialized())
+        {
+            if (StatusText())
+            {
+                StatusText().Text(L"数据库未就绪");
+            }
+            return;
+        }
+        if (!GameGrid() || !SortBox())
+        {
+            return;
+        }
+        m_games = services.Games().GetAllGames();
+        GameGrid().Items().Clear();
+        std::vector<Core::Game> visible;
+        for (auto const& game : m_games)
+        {
+            if (m_favoriteOnly && !game.IsFavorite)
+            {
+                continue;
+            }
+            if (!m_search.empty()
+                && game.Title.find(m_search) == std::wstring::npos
+                && game.NormalizedTitle.find(m_search) == std::wstring::npos)
+            {
+                continue;
+            }
+            visible.push_back(game);
+        }
+        std::sort(visible.begin(), visible.end(), [this](Core::Game const& a, Core::Game const& b) {
+            if (SortBox().SelectedIndex() == 1)
+            {
+                return a.LastPlayedUnixSeconds > b.LastPlayedUnixSeconds;
+            }
+            if (SortBox().SelectedIndex() == 2)
+            {
+                return a.TotalPlaySeconds > b.TotalPlaySeconds;
+            }
+            return a.Title < b.Title;
+        });
+        for (auto const& game : visible)
+        {
+            GameGrid().Items().Append(BuildCoverTile(game));
+        }
+        StatusText().Text(to_hstring(visible.size()) + L" / " + to_hstring(m_games.size()) + L" 款游戏");
+    }
+
+    void LibraryPage::SearchBox_TextChanged(AutoSuggestBox const&, AutoSuggestBoxTextChangedEventArgs const&)
+    {
+        m_search = SearchBox().Text();
+        std::transform(m_search.begin(), m_search.end(), m_search.begin(), [](wchar_t c) {
+            if (c >= L'A' && c <= L'Z')
+            {
+                return static_cast<wchar_t>(c - L'A' + L'a');
+            }
+            return c;
+        });
+        Refresh();
+    }
+
+    void LibraryPage::SortBox_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+    {
+        Refresh();
+    }
+
+    void LibraryPage::FavoriteToggle_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        m_favoriteOnly = FavoriteToggle().IsChecked().Value();
+        Refresh();
+    }
+
+    void LibraryPage::Import_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        Frame().Navigate(xaml_typename<winrt::GameLibrary::ImportWizardPage>());
+    }
+
+    void LibraryPage::GameGrid_ItemClick(IInspectable const&, ItemClickEventArgs const& args)
+    {
+        auto clicked = args.ClickedItem();
+        if (!clicked)
+        {
+            return;
+        }
+        auto id = unbox_value_or<int64_t>(clicked.as<Button>().Tag(), 0);
+        if (id == 0)
+        {
+            return;
+        }
+        Frame().Navigate(xaml_typename<winrt::GameLibrary::GameDetailPage>(), box_value(id));
+    }
+
+    // 2:3 竖版封面卡片（template _3：Library 网格）
+    winrt::Microsoft::UI::Xaml::UIElement LibraryPage::BuildCoverTile(Core::Game const& game)
+    {
+        auto button = Button();
+        button.Width(180);
+        button.Height(270);
+        button.Padding(Thickness(0, 0, 0, 0));
+        button.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius{ 12, 12, 12, 12 });
+        button.BorderBrush(MakeBrush(0x66, 0x42, 0x46, 0x55));
+        button.BorderThickness(Thickness(1, 1, 1, 1));
+        button.Background(MakeBrush(255, 0x1A, 0x1B, 0x21));
+        button.Tag(box_value(game.Id));
+        button.UseSystemFocusVisuals(true);
+        button.Click({ this, &LibraryPage::GameCard_Click });
+
+        auto grid = Grid();
+
+        // 封面区（渐变 + 图标）
+        auto cover = Border();
+        cover.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius{ 12, 12, 12, 12 });
+        cover.Background(MakeCoverBrush());
+        auto icon = FontIcon();
+        icon.Glyph(L"\uE8B7");
+        icon.FontSize(52);
+        icon.Foreground(MakeBrush(255, 0x5C, 0x7A, 0xAF));
+        icon.HorizontalAlignment(HorizontalAlignment::Center);
+        icon.VerticalAlignment(VerticalAlignment::Center);
+        cover.Child(icon);
+        grid.Children().Append(cover);
+
+        // 底部信息层
+        auto overlay = Border();
+        overlay.Height(88);
+        overlay.VerticalAlignment(VerticalAlignment::Bottom);
+        overlay.Background(MakeOverlayBrush());
+        overlay.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius{ 0, 0, 12, 12 });
+        auto meta = StackPanel();
+        meta.Margin(Thickness(14, 0, 14, 14));
+        meta.Spacing(4);
+        meta.VerticalAlignment(VerticalAlignment::Bottom);
+        auto title = TextBlock();
+        title.Text(hstring(game.Title));
+        title.Style(Application::Current().Resources().Lookup(box_value(L"CardTitleStyle")).as<winrt::Microsoft::UI::Xaml::Style>());
+        title.FontSize(18);
+        title.TextTrimming(TextTrimming::CharacterEllipsis);
+        auto time = TextBlock();
+        time.Text(L"PLAYED " + to_hstring(game.TotalPlaySeconds / 60) + L" MIN");
+        time.Style(Application::Current().Resources().Lookup(box_value(L"CardSubStyle")).as<winrt::Microsoft::UI::Xaml::Style>());
+        time.TextTrimming(TextTrimming::CharacterEllipsis);
+        meta.Children().Append(title);
+        meta.Children().Append(time);
+        overlay.Child(meta);
+        grid.Children().Append(overlay);
+
+        button.Content(grid);
+        return button;
+    }
+
+    void LibraryPage::GameCard_Click(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        auto id = unbox_value_or<int64_t>(sender.as<Button>().Tag(), 0);
+        if (id == 0)
+        {
+            return;
+        }
+        Frame().Navigate(xaml_typename<winrt::GameLibrary::GameDetailPage>(), box_value(id));
+    }
+}

@@ -1,0 +1,58 @@
+namespace GameLibrary
+{
+    [default_interface]
+    runtimeclass MainWindow : Microsoft.UI.Xaml.Window
+    {
+        MainWindow();
+    }
+
+    [default_interface]
+    runtimeclass HomePage : Microsoft.UI.Xaml.Controls.Page
+    {
+        HomePage();
+    }
+
+    [default_interface]
+    runtimeclass LibraryPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        LibraryPage();
+    }
+
+    [default_interface]
+    runtimeclass GameDetailPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        GameDetailPage();
+        String GameTitle { get; };
+        String GameDescription { get; };
+        String PlayTime { get; };
+    }
+
+    [default_interface]
+    runtimeclass ImportWizardPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        ImportWizardPage();
+    }
+
+    [default_interface]
+    runtimeclass SettingsPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        SettingsPage();
+    }
+
+    [default_interface]
+    runtimeclass LaunchScreenPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        LaunchScreenPage();
+    }
+
+    [default_interface]
+    runtimeclass VirtualKeyboardUserControl : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        VirtualKeyboardUserControl();
+        String InitialValue { get; set; };
+        Boolean Multiline { get; set; };
+        String Value { get; };
+        event Windows.Foundation.TypedEventHandler<VirtualKeyboardUserControl, IInspectable> Confirmed;
+        event Windows.Foundation.TypedEventHandler<VirtualKeyboardUserControl, IInspectable> Cancelled;
+    }
+}

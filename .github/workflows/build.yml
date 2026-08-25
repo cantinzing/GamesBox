@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Bootstrap vcpkg
+        shell: powershell
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Restore vcpkg dependencies
+        shell: powershell
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
+
+      - name: Restore NuGet packages
+        shell: powershell
+        run: |
+          msbuild GameLibrary.sln /t:Restore /p:Configuration=Release /p:Platform=x64
+
+      - name: Build MSIX package
+        shell: powershell
+        run: |
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameLibrary-MSIX-x64
+          path: AppPackages/**
+          if-no-files-found: error
+
+      - name: Upload generated files (diagnostic)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-files
+          path: src/GameLibrary/Generated Files/**
+          if-no-files-found: ignore

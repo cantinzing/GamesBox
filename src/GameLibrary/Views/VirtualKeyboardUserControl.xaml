@@ -1,0 +1,58 @@
+﻿<UserControl
+    x:Class="GameLibrary.VirtualKeyboardUserControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Width="640">
+
+    <UserControl.Resources>
+        <!-- 屏幕键盘键样式已移至 App.xaml（Application.Resources），代码按 key 全局查找 -->
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource CardAcrylicBrush}"
+            BorderBrush="#33FFFFFF"
+            BorderThickness="1"
+            CornerRadius="16"
+            Padding="20,16">
+        <StackPanel Spacing="12">
+            <!-- 预览区 -->
+            <Border Background="#0DFFFFFF" CornerRadius="8" Padding="12,8">
+                <TextBlock x:Name="PreviewText"
+                           Text=""
+                           FontFamily="Hanken Grotesk, Segoe UI"
+                           FontSize="18"
+                           Foreground="{ThemeResource TextPrimaryBrush}"
+                           TextWrapping="Wrap"
+                           MinHeight="28" />
+            </Border>
+
+            <!-- 中文候选栏 -->
+            <Border x:Name="CandidateBar" Background="#0DFFFFFF" CornerRadius="8" Padding="12,8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock x:Name="PyBufferText"
+                               Text="拼音…"
+                               Tag="i18n:vk.pinyinPlaceholder"
+                               FontFamily="JetBrains Mono, Consolas"
+                               FontSize="14"
+                               Foreground="{ThemeResource AccentLightBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="|" Foreground="#33FFFFFF" VerticalAlignment="Center" />
+                    <StackPanel x:Name="CandidatePanel" Orientation="Horizontal" Spacing="6" />
+                </StackPanel>
+            </Border>
+
+            <!-- 键盘区域（按钮由 code-behind 生成） -->
+            <StackPanel x:Name="KeysPanel" />
+
+            <!-- 多行提示 -->
+            <TextBlock x:Name="MultilineHint"
+                       Text="多行文本：用「手柄输入」拼写后按确定。"
+                       Tag="i18n:vk.multilineHint"
+                       FontSize="12"
+                       Foreground="#66FFFFFF"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+    </Border>
+</UserControl>

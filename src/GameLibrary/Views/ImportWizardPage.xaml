@@ -1,0 +1,180 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="GameLibrary.ImportWizardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Page.Resources>
+        <Style x:Key="WizardTagPillStyle" TargetType="Border">
+            <Setter Property="Background" Value="#CC34343A" />
+            <Setter Property="BorderBrush" Value="{ThemeResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="13" />
+            <Setter Property="Padding" Value="12,4" />
+        </Style>
+        <Style x:Key="WizardPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AppGlassButtonStyle}">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="24,0" />
+        </Style>
+        <Style x:Key="WizardInputStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="#0DFFFFFF" />
+            <Setter Property="BorderBrush" Value="{ThemeResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Height" Value="42" />
+            <Setter Property="FontFamily" Value="JetBrains Mono, Consolas" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="12,8,12,9" />
+        </Style>
+        <Style x:Key="WizardSourceTabStyle" TargetType="Button" BasedOn="{StaticResource AppGlassButtonStyle}">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="20,0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="#0DFFFFFF" />
+            <Setter Property="BorderBrush" Value="#33FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        </Style>
+        <Style x:Key="WizardFieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Hanken Grotesk, Segoe UI" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="#B3FFFFFF" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="WizardSelectStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#0DFFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="12,8,12,9" />
+            <Setter Property="FontFamily" Value="Hanken Grotesk, Segoe UI" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer KeyDown="Root_KeyDown">
+        <Grid>
+            <!-- 居中玻璃弹窗卡片（对齐 SearchOverlay 样式，Acrylic 毛玻璃） -->
+            <Border Width="760" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,112,0,0"
+                    Background="{StaticResource CardAcrylicBrush}"
+                    BorderBrush="#26FFFFFF" BorderThickness="1"
+                    CornerRadius="20" Padding="24,18,24,20">
+                <StackPanel Spacing="18">
+
+                    <!-- 标题行 + 关闭 -->
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Border Style="{StaticResource WizardTagPillStyle}">
+                                    <TextBlock Text="IMPORT WIZARD" Tag="i18n:import.wizard" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource AccentLightBrush}" />
+                                </Border>
+                                <Border Style="{StaticResource WizardTagPillStyle}">
+                                    <TextBlock Text="STEP 1 OF 2" Tag="i18n:import.step1of2" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource TextTertiaryBrush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="导入本地游戏" Tag="i18n:import.title" FontFamily="Hanken Grotesk, Segoe UI"
+                                       FontSize="30" FontWeight="ExtraBold" Foreground="{ThemeResource TextPrimaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Click="CloseButton_Click"
+                                Style="{StaticResource TopBarIconButtonStyle}" AutomationProperties.Name="Close">
+                            <FontIcon Glyph="&#xE8BB;" FontSize="16" Foreground="#66FFFFFF" />
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Text="选择包含游戏可执行文件的目录，扫描候选并加入游戏库。Steam 与 Epic 游戏可在设置中启用自动发现。"
+                               Tag="i18n:import.desc" FontFamily="Hanken Grotesk, Segoe UI" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <!-- 来源选择 -->
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="选择来源" Tag="i18n:import.chooseSource" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="SourceLocalBtn" Tag="local" Content="本地文件"
+                                    Style="{StaticResource WizardSourceTabStyle}" Click="SourceTab_Click" />
+                            <Button x:Name="SourceSteamBtn" Tag="steam" Content="Steam"
+                                    Style="{StaticResource WizardSourceTabStyle}" Click="SourceTab_Click" />
+                            <Button x:Name="SourceEpicBtn" Tag="epic" Content="Epic"
+                                    Style="{StaticResource WizardSourceTabStyle}" Click="SourceTab_Click" />
+                        </StackPanel>
+                        <TextBlock x:Name="SourceHintText" Text="选择包含游戏可执行文件的目录，扫描候选并加入游戏库。"
+                                   FontFamily="Hanken Grotesk, Segoe UI" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- 游戏库（从设置移入：本地扫描目录 + 扫描深度，仅本地文件来源显示） -->
+                    <StackPanel x:Name="LocalOptionsPanel" Spacing="12">
+                        <TextBlock Text="游戏库" Tag="i18n:settings.library" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="FolderBox" Style="{StaticResource WizardInputStyle}"
+                                     PlaceholderText="例如 D:\Games" Tag="i18nph:import.pathPlaceholder" IsEnabled="False" />
+                            <Button Grid.Column="1" Style="{StaticResource WizardPrimaryButtonStyle}" Content="浏览"
+                                    Tag="i18n:import.browse" Click="BrowseButton_Click" />
+                        </Grid>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="扫描深度" Tag="i18n:settings.scanDepth" Style="{StaticResource WizardFieldLabelStyle}" />
+                            <ComboBox x:Name="ScanDepthBox" Style="{StaticResource WizardSelectStyle}">
+                                <ComboBoxItem Content="浅层（仅根目录）" Tag="i18n:settings.scanDepth.1" />
+                                <ComboBoxItem Content="中等（2 层）" Tag="i18n:settings.scanDepth.2" />
+                                <ComboBoxItem Content="深层（递归全部）" Tag="i18n:settings.scanDepth.3" IsSelected="True" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 操作 -->
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="扫描" Tag="i18n:import.scan" Style="{StaticResource BloomButtonStyle}" Click="ScanButton_Click" />
+                        <Button Content="导入已选" Tag="i18n:import.importSelected" Style="{StaticResource BloomButtonStyle}" Click="ImportButton_Click" />
+                    </StackPanel>
+
+                    <!-- 候选列表 -->
+                    <StackPanel Spacing="10">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="FOUND CANDIDATES" Tag="i18n:import.foundCandidates" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource TextTertiaryBrush}" />
+                                <TextBlock x:Name="CandidatesCountText" Style="{StaticResource MonoLabelStyle}" Foreground="{ThemeResource AccentLightBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Content="全选" Tag="i18n:import.selectAll" Click="SelectAll_Click"
+                                        Style="{StaticResource WizardSourceTabStyle}" Height="30" Padding="14,0" />
+                                <Button Content="反选" Tag="i18n:import.invertSelection" Click="InvertSelection_Click"
+                                        Style="{StaticResource WizardSourceTabStyle}" Height="30" Padding="14,0" />
+                            </StackPanel>
+                        </Grid>
+                        <ListView x:Name="CandidatesList" Height="220" Background="#33463A3A"
+                                  BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="12"
+                                  Padding="8" SelectionMode="None" />
+                    </StackPanel>
+
+                    <!-- 导入进度 -->
+                    <ProgressBar x:Name="ImportProgress" Height="6" Minimum="0" Maximum="1"
+                                 Foreground="#FF4FC3F7" Background="#33FFFFFF"
+                                 Visibility="Collapsed" />
+
+                    <!-- 状态 -->
+                    <TextBlock x:Name="StatusText" Style="{StaticResource MonoLabelStyle}"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Page>

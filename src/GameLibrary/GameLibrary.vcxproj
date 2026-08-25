@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge>
+    <MinimumVisualStudioVersion>16.0</MinimumVisualStudioVersion>
+    <CppWinRTPackage>true</CppWinRTPackage>
+    <ProjectGuid>{7B7F2C0E-3E9D-4A51-8F4C-6D1B2A3C4D5E}</ProjectGuid>
+    <ProjectName>GameLibrary</ProjectName>
+    <RootNamespace>GameLibrary</RootNamespace>
+    <EnableNativePackageReferenceSupport>true</EnableNativePackageReferenceSupport>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumWindowsTargetPlatformVersion>10.0</MinimumWindowsTargetPlatformVersion>
+    <AppContainerApplication>false</AppContainerApplication>
+    <AppxPackage>false</AppxPackage>
+    <WindowsPackageType>None</WindowsPackageType>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <!-- 自包含部署：把 Windows App SDK 运行时 DLL 随 exe 一起输出，Win10/Win11 都无需单独安装运行时。
+         仅对 Release 生效（部署产物）；Debug 保持普通 unpackaged，便于本机开发调试。
+         注意：自包含 exe 在“已安装 WindowsAppRuntime 框架包”的机器上会与框架包冲突（0xC0000602），
+         在干净的 Win10/Win11 上正常。 -->
+    <WindowsAppSDKSelfContained Condition="'$(Configuration)'=='Release'">true</WindowsAppSDKSelfContained>
+      <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+      <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+    <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
+    <UseWinUI>true</UseWinUI>
+    <RuntimeIdentifiers>win10-x64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <DesktopCompatible>true</DesktopCompatible>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <!-- Output paths: unpackaged WinUI (ApplicationType=Windows Store + AppxPackage=false)
+       does not get OutDir/IntDir/OutputPath from the Cpp defaults, so define them here.
+       Layout mirrors the existing build/ convention (build/bin and build/obj). -->
+  <PropertyGroup>
+    <OutDir Condition="'$(OutDir)'==''">$(ProjectDir)..\..\build\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(IntDir)'==''">$(ProjectDir)..\..\build\obj\$(Platform)\$(Configuration)\</IntDir>
+    <OutputPath Condition="'$(OutputPath)'==''">$(OutDir)</OutputPath>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <_NuGetTargetFallbackMoniker>$(_NuGetTargetFallbackMoniker);native,Version=v0.0</_NuGetTargetFallbackMoniker>
+  </PropertyGroup>
+  <PropertyGroup>
+    <VcpkgRoot Condition="'$(VcpkgRoot)'=='' and '$(VCPKG_ROOT)'!=''">$(VCPKG_ROOT)</VcpkgRoot>
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgTriplet Condition="'$(Platform)'=='x64'">x64-windows</VcpkgTriplet>
+    <VcpkgTriplet Condition="'$(Platform)'=='Win32'">x86-windows</VcpkgTriplet>
+  </PropertyGroup>
+  <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props" Condition="'$(VcpkgRoot)' != '' and Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props')" />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Generated Files;$(ProjectDir)Generated Files\Views;$(IntDir);$(OutDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
+      <PreprocessorDefinitions>_VSDESIGNER_DONT_LOAD_AS_DLL;DISABLE_XAML_GENERATED_MAIN;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+    <Page Include="MainWindow.xaml" />
+    <Page Include="Views\HomePage.xaml" />
+    <Page Include="Views\LibraryPage.xaml" />
+    <Page Include="Views\GameDetailPage.xaml" />
+    <Page Include="Views\ImportWizardPage.xaml" />
+    <Page Include="Views\SettingsPage.xaml" />
+    <Page Include="Views\LaunchScreenPage.xaml" />
+    <Page Include="Views\VirtualKeyboardUserControl.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="GameLibrary.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="App.xaml.h">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="MainWindow.xaml.h">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\HomePage.xaml.h">
+      <DependentUpon>Views\HomePage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\LibraryPage.xaml.h">
+      <DependentUpon>Views\LibraryPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\GameDetailPage.xaml.h">
+      <DependentUpon>Views\GameDetailPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\ImportWizardPage.xaml.h">
+      <DependentUpon>Views\ImportWizardPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\SettingsPage.xaml.h">
+      <DependentUpon>Views\SettingsPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\LaunchScreenPage.xaml.h">
+      <DependentUpon>Views\LaunchScreenPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Views\VirtualKeyboardUserControl.xaml.h">
+      <DependentUpon>Views\VirtualKeyboardUserControl.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Core\Models.h" />
+    <ClInclude Include="Core\Normalization.h" />
+    <ClInclude Include="Sources\GameSourceAdapter.h" />
+    <ClInclude Include="Sources\SteamSourceAdapter.h" />
+    <ClInclude Include="Sources\EpicSourceAdapter.h" />
+    <ClInclude Include="Sources\LocalSourceAdapter.h" />
+    <ClInclude Include="Sources\SourceManager.h" />
+    <ClInclude Include="Metadata\MetadataProvider.h" />
+    <ClInclude Include="Metadata\HttpHelper.h" />
+    <ClInclude Include="Metadata\IgdbMetadataProvider.h" />
+    <ClInclude Include="Metadata\SteamGridDbProvider.h" />
+    <ClInclude Include="Data\Database.h" />
+    <ClInclude Include="Data\Repositories.h" />
+    <ClInclude Include="Data\AppSettings.h" />
+    <ClInclude Include="Data\CredentialStore.h" />
+    <ClInclude Include="Services\AppServices.h" />                                                                     
+    <ClInclude Include="Services\GamepadNavigator.h" />                                                                
+    <ClInclude Include="Services\Localization.h" />                                                                    
+    <ClInclude Include="Services\SessionTracker.h" />                                                                  
+<ClInclude Include="Services\MetadataService.h" />
+    <ClInclude Include="Services\PinyinDict.h" />
+    <ClInclude Include="Services\VisualEffects.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="App.xaml.cpp">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="MainWindow.xaml.cpp">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\HomePage.xaml.cpp">
+      <DependentUpon>Views\HomePage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\LibraryPage.xaml.cpp">
+      <DependentUpon>Views\LibraryPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\GameDetailPage.xaml.cpp">
+      <DependentUpon>Views\GameDetailPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\ImportWizardPage.xaml.cpp">
+      <DependentUpon>Views\ImportWizardPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\SettingsPage.xaml.cpp">
+      <DependentUpon>Views\SettingsPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\LaunchScreenPage.xaml.cpp">
+      <DependentUpon>Views\LaunchScreenPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Views\VirtualKeyboardUserControl.xaml.cpp">
+      <DependentUpon>Views\VirtualKeyboardUserControl.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="Core\Normalization.cpp" />
+    <ClCompile Include="Sources\SteamSourceAdapter.cpp" />
+    <ClCompile Include="Sources\EpicSourceAdapter.cpp" />
+    <ClCompile Include="Sources\LocalSourceAdapter.cpp" />
+    <ClCompile Include="Sources\SourceManager.cpp" />
+    <ClCompile Include="Metadata\IgdbMetadataProvider.cpp" />
+    <ClCompile Include="Metadata\SteamGridDbProvider.cpp" />
+    <ClCompile Include="Metadata\HttpHelper.cpp" />
+    <ClCompile Include="Data\Database.cpp" />
+    <ClCompile Include="Data\Repositories.cpp" />
+    <ClCompile Include="Data\AppSettings.cpp" />
+    <ClCompile Include="Data\CredentialStore.cpp" />
+    <ClCompile Include="Services\AppServices.cpp" />                                                                   
+    <ClCompile Include="Services\GamepadNavigator.cpp" />                                                              
+    <ClCompile Include="Services\Localization.cpp" />                                                                  
+    <ClCompile Include="Services\SessionTracker.cpp" />                                                                
+    <ClCompile Include="Services\MetadataService.cpp" />
+    <ClCompile Include="Services\PinyinDict.cpp" />
+    <ClCompile Include="Services\VisualEffects.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" Condition="'$(VcpkgRoot)' != '' and Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets')" />
+  <PropertyGroup>
+    <NuGetTargetMoniker>native,Version=v0.0</NuGetTargetMoniker>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(ApplicationType)' != 'Windows Store'">
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <AppxGetPackagePropertiesEnabled>false</AppxGetPackagePropertiesEnabled>
+    <IncludeProjectPriFile>false</IncludeProjectPriFile>
+  </PropertyGroup>
+  <Target Name="CopyLocalFilesOutputGroup" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <CopyLocalFilesOutputGroupOutput Include="@(ReferenceCopyLocalPaths)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="GetPackagingOutputs" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <GetPackagingOutputsOutput Include="@(ReferenceCopyLocalPaths)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="GetMrtPackagingOutputs" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <GetMrtPackagingOutputsOutput Include="@(ReferenceCopyLocalPaths)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="_GetDefaultResourceLanguage" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <PropertyGroup>
+      <DefaultResourceLanguage>en-US</DefaultResourceLanguage>
+    </PropertyGroup>
+  </Target>
+  <Target Name="_GenerateProjectPriFile" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <_PriFilesFromPayload></_PriFilesFromPayload>
+    </ItemGroup>
+  </Target>
+  <Target Name="_GetSdkToolPaths" Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <_GetToolPathsOutput></_GetToolPathsOutput>
+    </ItemGroup>
+  </Target>
+  <ItemDefinitionGroup Condition="'$(ApplicationType)' != 'Windows Store'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(IntDir)Views\;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Target Name="CompileXamlGeneratedSourcesStandalone" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" BeforeTargets="ClCompile" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
+    <ItemGroup>
+      <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp')" />
+      <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp')" />
+    </ItemGroup>
+  </Target>
+  <Target Name="AddWinUIWinmdReferencesForStandaloneBuild" BeforeTargets="MarkupCompilePass1;MarkupCompilePass2" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
+    <PropertyGroup>
+      <_WinUIMarkupUapTargetVersion Condition="'$(TargetPlatformVersion)' == '' OR '$(TargetPlatformVersion)' &lt; '10.0.18362.0'">uap10.0.17763</_WinUIMarkupUapTargetVersion>
+      <_WinUIMarkupUapTargetVersion Condition="'$(_WinUIMarkupUapTargetVersion)' == ''">uap10.0.18362</_WinUIMarkupUapTargetVersion>
+    </PropertyGroup>
+    <ItemGroup>
+      <ReferencePath Include="$(PkgMicrosoft_WindowsAppSDK)\lib\uap10.0\*.winmd" />
+      <ReferencePath Include="$(PkgMicrosoft_WindowsAppSDK)\lib\$(_WinUIMarkupUapTargetVersion)\*.winmd" />
+      <ReferencePath Include="$(WindowsSdkDir)References\$(TargetPlatformVersion)\*\*.winmd" />
+      <ReferencePath Include="$(WindowsSdkDir)References\$(TargetPlatformVersion)\*\*\*.winmd" />
+      <XamlReferencesToCompile Include="$(PkgMicrosoft_WindowsAppSDK)\lib\uap10.0\*.winmd" />
+      <XamlReferencesToCompile Include="$(PkgMicrosoft_WindowsAppSDK)\lib\$(_WinUIMarkupUapTargetVersion)\*.winmd" />
+      <XamlReferencesToCompile Include="$(WindowsSdkDir)References\$(TargetPlatformVersion)\*\*.winmd" />
+      <XamlReferencesToCompile Include="$(WindowsSdkDir)References\$(TargetPlatformVersion)\*\*\*.winmd" />
+    </ItemGroup>
+  </Target>
+</Project>

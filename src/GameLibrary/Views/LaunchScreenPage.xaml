@@ -1,0 +1,98 @@
+﻿<Page
+    x:Class="GameLibrary.LaunchScreenPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource BackgroundBaseBrush}">
+        <!-- 全屏背景（游戏背景图或渐变占位） -->
+        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Opacity="0.5" />
+        <!-- 顶部压暗（对齐参考 from-background via-background/80 to-background/40） -->
+        <Border>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                    <GradientStop Color="#A0121318" Offset="0" />
+                    <GradientStop Color="#60121318" Offset="0.6" />
+                    <GradientStop Color="#00121318" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+        <Border Background="{ThemeResource BottomFadeBrush}" />
+
+        <!-- 中央内容：ambient 光晕 + 封面 + 标题 + 状态序列 -->
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid Width="480" Height="480" HorizontalAlignment="Center" VerticalAlignment="Center"
+                  IsHitTestVisible="False">
+                <Ellipse x:Name="AmbientGlow" Width="400" Height="400"
+                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#26005AEE" Offset="0.0" />
+                            <GradientStop Color="#00121318" Offset="0.7" />
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+            </Grid>
+
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid HorizontalAlignment="Center" Margin="0,0,0,40">
+                    <Border x:Name="CoverGlow" Width="232" Height="232" CornerRadius="40"
+                            Background="{ThemeResource AccentGlowBrush}" Margin="10"
+                            Opacity="0.6" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border x:Name="Cover" Width="224" Height="224" CornerRadius="32"
+                            Background="{ThemeResource SurfaceContainerHighestBrush}"
+                            BorderBrush="{ThemeResource BorderSoftBrush}" BorderThickness="1"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid>
+                            <FontIcon Glyph="&#xE8B7;" FontSize="60"
+                                      Foreground="{ThemeResource OutlineBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Image x:Name="CoverImage" Stretch="UniformToFill" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <TextBlock x:Name="LaunchTitle" Text="Launching Game…" Tag="i18n:launch.starting"
+                           FontFamily="Hanken Grotesk, Segoe UI" FontSize="40" FontWeight="Bold"
+                           Foreground="{ThemeResource TextPrimaryBrush}" HorizontalAlignment="Center"
+                           CharacterSpacing="30" />
+
+                </StackPanel>
+        </Grid>
+
+        <!-- 底部：进度条（细条 + 发光尖端 + 上升粒子）+ 标签栏 -->
+        <Grid x:Name="BottomBar" VerticalAlignment="Bottom" Margin="64,0,64,48">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Spacing="0">
+                <!-- 粒子层：从填充区域内冒出的光点（对齐参考 h-12 粒子区） -->
+                <Canvas x:Name="ParticleHost" Height="48" IsHitTestVisible="False" />
+                <Grid Height="4">
+                    <Border Height="4" CornerRadius="2" Background="#1AFFFFFF">
+                        <Border x:Name="ProgressBar" HorizontalAlignment="Stretch" CornerRadius="2">
+                            <Border.Background>
+                                <SolidColorBrush Color="#B4C5FF" />
+                            </Border.Background>
+                        </Border>
+                    </Border>
+                </Grid>
+            </StackPanel>
+
+            <Grid Grid.Row="1" Margin="0,24,0,0">
+                <StackPanel HorizontalAlignment="Left" Spacing="6">
+                    <TextBlock x:Name="GameNameText" Text="" FontFamily="Hanken Grotesk, Segoe UI"
+                               FontSize="16" FontWeight="Bold" Foreground="{ThemeResource TextPrimaryBrush}"
+                               CharacterSpacing="100" />
+                </StackPanel>
+                <TextBlock x:Name="ProgressText" Text="0%" FontFamily="JetBrains Mono, Consolas"
+                           FontSize="12" FontWeight="Medium" CharacterSpacing="100"
+                           Foreground="#66FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>
