@@ -21,11 +21,16 @@ namespace winrt::GameLibrary::implementation
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         void AutoCarouselToggle_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        void CopyMachineCode_Click(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        void ActivateButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
     private:
         void PopulateSourceDetection();
         void UpdateAutoFetchToggle();
         void UpdateAutoCarouselToggle();
+        void UpdateActivationStatus();
         void SaveSettings();
     };
 }
