@@ -505,16 +505,6 @@ namespace winrt::GameLibrary::implementation
             dlg.Content(box_value(L"导入游戏功能需要激活后使用。\n请前往「设置 → 软件激活」输入激活码。"));
             dlg.CloseButtonText(L"确定");
             dlg.XamlRoot(XamlRoot());
-
-            auto acrylic = winrt::Microsoft::UI::Xaml::Media::AcrylicBrush();
-            acrylic.TintColor(winrt::Windows::UI::Color{ 0xCC, 0x14, 0x18, 0x2B });
-            acrylic.TintOpacity(0.55);
-            acrylic.FallbackColor(winrt::Windows::UI::Color{ 0xCC, 0x14, 0x18, 0x2B });
-            dlg.Background(acrylic);
-            dlg.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius(12));
-            dlg.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush{ winrt::Windows::UI::Color{ 0x3C, 0xA6, 0xB6, 0xD8 } });
-            dlg.BorderThickness(winrt::Microsoft::UI::Xaml::Thickness(1));
-
             co_await dlg.ShowAsync();
             co_return;
         }
