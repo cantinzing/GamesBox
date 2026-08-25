@@ -236,21 +236,27 @@ This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled 
 
 ## Activation & Licensing
 
-This software is paid-licensed and uses **fully offline activation** (machine code + HMAC activation code, no network check).
+This software is paid-licensed and uses **fully offline activation** (machine code + ECDSA-P256 signed activation code, no network check).
+
+### How it works
+
+- An activation code is the ECDSA-P256 signature over the SHA-256 of the customer's machine code, Base32-encoded and grouped for display.
+- The client embeds **only the public key** for verification; the private key (`tools/private_key.bin`) stays on the developer's machine, is **never committed and never shipped**.
+- Because verification needs only the public key, reverse engineering cannot forge codes (no private key means no valid signature), eliminating keygen — unlike the old symmetric HMAC scheme.
 
 ### Obtaining an activation code
 
 1. The customer installs and opens the app, goes to **Settings → Software Activation**, and copies the **machine code** shown there.
-2. You generate the activation code from that machine code using `tools/gen_license.ps1` (recommended, no Python needed):
+2. You generate the activation code from that machine code using `tools/gen_license.cpp` (C++/BCrypt tool, needs the MSVC environment):
 
    ```powershell
-   .\tools\gen_license.ps1 "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
+   # In an "x64 Native Tools Command Prompt for VS":
+   cl /EHsc /std:c++20 /I src\GameLibrary tools\gen_license.cpp /link bcrypt.lib advapi32.lib /OUT:tools\gen_license.exe
+   .\tools\gen_license.exe "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
    ```
 
-   It prints an activation code like `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`; send it to the customer.
+   It prints an activation code like `XXXXX-XXXXX-XXXXX-...`; send it to the customer.
 3. The customer pastes it into the **Activation code** box and clicks **Activate**; the code is bound to that machine and must be re-issued after a reinstall or on a different machine.
-
-> The generator shares the same algorithm (HMAC-SHA256 + Base32) and secret as the client, so only the developer can mint codes. See `src/GameLibrary/Licensing/LicenseManager.cpp`.
 
 ### Limits when not activated
 
@@ -258,8 +264,8 @@ When unactivated, the **import** feature is blocked with a prompt to activate fi
 
 ### Developer tools
 
-- `tools/gen_license.ps1` — activation-code generator (PowerShell, recommended).
-- `tools/gen_license.py` — same (Python version, requires a usable Python interpreter).
+- `tools/gen_license.cpp` — activation-code generator (C++/BCrypt; compile with the command above).
+- `tools/private_key.bin` — the ECDSA private key (**gitignored; do not commit or ship**). To rotate keys, regenerate and replace the embedded public-key blob in `src/GameLibrary/Licensing/LicenseCrypto.cpp`.
 
 ---
 

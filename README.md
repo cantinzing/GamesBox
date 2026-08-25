@@ -16,8 +16,8 @@
 
 ## 激活与授权 / Activation
 
-付费授权采用纯离线激活（机器码 + 激活码）。获取激活码的方法与生成器见各语言文档的「激活与授权」小节。
-Paid license uses offline machine-code + activation-code. How to mint codes and the generator tools are in the "Activation & Licensing" section of the language docs.
+付费授权采用纯离线激活（机器码 + ECDSA-P256 签名激活码）。获取激活码的方法与生成器见各语言文档的「激活与授权」小节。
+Paid license uses offline machine-code + ECDSA-P256 signed activation code. How to mint codes and the generator tools are in the "Activation & Licensing" section of the language docs.
 
 ## 开源协议 / License
 

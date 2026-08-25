@@ -33,3 +33,13 @@ out/
 
 # Test / log artifacts
 *.log
+
+# 激活私钥（仅开发者本地持有，绝不入库/分发）
+tools/private_key.bin
+*.pem
+
+# 本地生成器构建产物
+tools/gen_license.exe
+*.obj
+
+
