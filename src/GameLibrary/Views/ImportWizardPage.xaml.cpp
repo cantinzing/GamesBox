@@ -153,12 +153,7 @@ namespace winrt::GameLibrary::implementation
         Services::Localization::Instance().LocalizeVisualTree(Content());
         if (!Licensing::LicenseManager::IsActivated())
         {
-            ImportButton().IsEnabled(false);
             StatusText().Text(L"导入功能需激活后使用，请前往「设置 → 软件激活」输入激活码。");
-        }
-        else
-        {
-            ImportButton().IsEnabled(true);
         }
     }
 
