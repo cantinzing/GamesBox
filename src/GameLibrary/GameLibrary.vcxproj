@@ -155,7 +155,6 @@
     <ClInclude Include="Data\Repositories.h" />
     <ClInclude Include="Data\AppSettings.h" />
     <ClInclude Include="Data\CredentialStore.h" />
-    <ClInclude Include="Licensing\LicenseManager.h" />
     <ClInclude Include="Services\AppServices.h" />                                                                     
     <ClInclude Include="Services\GamepadNavigator.h" />                                                                
     <ClInclude Include="Services\Localization.h" />                                                                    
@@ -207,7 +206,6 @@
     <ClCompile Include="Data\Repositories.cpp" />
     <ClCompile Include="Data\AppSettings.cpp" />
     <ClCompile Include="Data\CredentialStore.cpp" />
-    <ClCompile Include="Licensing\LicenseManager.cpp" />
     <ClCompile Include="Services\AppServices.cpp" />                                                                   
     <ClCompile Include="Services\GamepadNavigator.cpp" />                                                              
     <ClCompile Include="Services\Localization.cpp" />                                                                  

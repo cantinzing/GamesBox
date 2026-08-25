@@ -6,8 +6,6 @@
 
 #include "../Services/AppServices.h"
 #include "../Services/Localization.h"
-#include "../Licensing/LicenseManager.h"
-
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 #include <winrt/Microsoft.UI.Text.h>
@@ -87,10 +85,6 @@ namespace winrt::GameLibrary::implementation
         IgdbClientId().Text(hstring(services.Settings().GetString(L"igdb.client_id")));
         IgdbSecret().Password(hstring(services.Credentials().Read(L"GameLibrary/IGDB/ClientSecret")));
         SteamGridDbKey().Password(hstring(services.Credentials().Read(L"GameLibrary/SteamGridDB/ApiKey")));
-
-        // 激活：展示机器码并刷新状态
-        MachineCodeBox().Text(hstring(Licensing::LicenseManager::GetMachineCode()));
-        UpdateActivationStatus();
     }
 
     void SettingsPage::OnPageLoaded(winrt::Windows::Foundation::IInspectable const&,
@@ -383,60 +377,5 @@ namespace winrt::GameLibrary::implementation
     void SettingsPage::AutoFetchToggle_Click(IInspectable const&, RoutedEventArgs const&)
     {
         UpdateAutoFetchToggle();
-    }
-
-    void SettingsPage::CopyMachineCode_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        auto code = MachineCodeBox().Text();
-        if (code.empty())
-        {
-            return;
-        }
-        winrt::Windows::ApplicationModel::DataTransfer::DataPackage package;
-        package.SetText(code);
-        winrt::Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
-        ActivationStatusText().Text(L"机器码已复制");
-        ActivationStatusText().Foreground(WarnBrush());
-    }
-
-    void SettingsPage::ActivateButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        std::wstring code = std::wstring(ActivationCodeBox().Text());
-        if (code.empty())
-        {
-            ActivationStatusText().Text(L"请输入激活码");
-            ActivationStatusText().Foreground(WarnBrush());
-            return;
-        }
-        if (Licensing::LicenseManager::Activate(code))
-        {
-            UpdateActivationStatus();
-            ActivationStatusText().Text(L"激活成功");
-            ActivationStatusText().Foreground(OkBrush());
-        }
-        else
-        {
-            ActivationStatusText().Text(L"激活码无效");
-            ActivationStatusText().Foreground(WarnBrush());
-        }
-    }
-
-    void SettingsPage::UpdateActivationStatus()
-    {
-        auto status = ActivationStatusText();
-        if (status == nullptr)
-        {
-            return;
-        }
-        if (Licensing::LicenseManager::IsActivated())
-        {
-            status.Text(L"已激活");
-            status.Foreground(OkBrush());
-        }
-        else
-        {
-            status.Text(L"未激活");
-            status.Foreground(WarnBrush());
-        }
     }
 }
