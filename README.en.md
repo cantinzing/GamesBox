@@ -199,16 +199,30 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ## Download from GitHub Actions (CI artifacts)
 
-Pushing to `main` or triggering `workflow_dispatch` builds and packages the app on `windows-2022` and produces three artifacts (download them from the Artifacts section of the corresponding run):
+Pushing to `main` or triggering `workflow_dispatch` builds and packages the app on `windows-2022` and produces four artifacts (download them from the Artifacts section of the corresponding run):
 
 - **GameLibrary-portable-win-x64** (self-contained zip)
   - Unzip and double-click `GameLibrary.exe` to run — no runtime install or certificate needed. Works on a clean Windows 10 / 11; on a machine that also has the registered WindowsAppRuntime framework package it may hit the `0xC0000602` conflict (see Local development notes, a known limitation).
 - **GameLibrary-setup-win-x64** (traditional installer `setup.exe`)
   - Double-click to run the install wizard; it installs to `C:\Program Files\GameLibrary` by default and creates Start Menu / desktop shortcuts (admin elevation is requested). The installed files are the same as the self-contained zip; the same `0xC0000602` runtime limitation applies (clean target machines are fine).
 - **GameLibrary-MSIX-x64** (sideload MSIX)
-  - See the “MSIX sideload” flow above: trust the `GameLibrary_TemporaryKey.pfx` cert first, then `Add-AppxPackage`.
+  - See the “MSIX sideload” flow above. The downloaded zip unpacks to that flow’s `AppPackages` content (`*.msix` + `Add-AppPackage.ps1`). The signing cert `GameLibrary_TemporaryKey.pfx` (empty password) is **not in the artifact** — get it from the repo at `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` and install it into “Trusted People” before installing.
 - **GameLibrary-store-msixbundle** (Store submission package, unsigned `.msixbundle`)
-  - For submitting to the Microsoft Store. Before uploading to Partner Center, change the `Identity Name` and `Publisher` in `src/GameLibrary.Package/Package.appxmanifest` to the Store-reserved values (also align `PublisherDisplayName` with your Store publisher name), then re-run CI to get the matching package. The package is built framework-dependent (no bundled runtime) and **unsigned locally**, so the Store re-signs it on publish.
+  - For submitting to the Microsoft Store; see the “Store submission” section below for steps.
+
+---
+
+### Store submission (GameLibrary-store-msixbundle)
+
+This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled runtime) intended for the Microsoft Store, which re-signs it on publish. Steps:
+
+1. In **Microsoft Partner Center**, create the app and reserve its name to obtain the Store-assigned `Identity Name` and `Publisher` (and the publisher display name).
+2. Edit `src/GameLibrary.Package/Package.appxmanifest` in the repo:
+   - Change `<Identity Name="GameLibrary" Publisher="CN=GameLibrary" .../>` to the Store-reserved values (`Name` and `Publisher` must match exactly);
+   - Change `<PublisherDisplayName>` under `<Properties>` to your Store publisher name.
+3. Commit and push to `main` (or run `workflow_dispatch`) to re-run CI and produce a `GameLibrary-store-msixbundle` with the new identity.
+4. Sign in to Partner Center → open the app → “Submissions” → “Packages” → upload the `.msixbundle`. The Store handles the Windows App SDK runtime dependency automatically and re-signs on release.
+5. Do not sign the bundle locally; CI sets `AppxPackageSigningEnabled=false`, so keep it unsigned for submission.
 
 ---
 

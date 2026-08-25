@@ -203,16 +203,30 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ## 从 GitHub Actions 下载产物（CI 自动打包）
 
-推送 `main` 分支或手动触发 `workflow_dispatch` 后，CI 会在 `windows-2022` 上完成还原与构建，并产出三个 Artifact（在 Actions 页面对应任务的 Artifacts 中下载）：
+推送 `main` 分支或手动触发 `workflow_dispatch` 后，CI 会在 `windows-2022` 上完成还原与构建，并产出四个 Artifact（在 Actions 页面对应任务的 Artifacts 中下载）：
 
 - **GameLibrary-portable-win-x64**（自包含压缩包）
   - 解压后直接双击 `GameLibrary.exe` 即可运行，无需安装运行时或证书。适用于干净的 Windows 10 / 11；若在已注册 WindowsAppRuntime 框架包的机器上运行，可能触发 `0xC0000602` 冲突（见本地开发注意事项，属已知限制）。
 - **GameLibrary-setup-win-x64**（传统安装向导 `setup.exe`）
   - 双击运行安装向导，默认安装到 `C:\Program Files\GameLibrary`，并在开始菜单 / 桌面创建快捷方式（安装时会请求管理员提权）。其安装内容与自包含压缩包一致，运行时同样受 `0xC0000602` 限制影响（干净目标机正常）。
 - **GameLibrary-MSIX-x64**（侧载 MSIX）
-  - 见上方“MSIX 侧载”流程：先信任证书 `GameLibrary_TemporaryKey.pfx`，再用 `Add-AppxPackage` 安装。
+  - 见上方“MSIX 侧载”流程。下载的压缩包解压后即为该流程里的 `AppPackages` 内容（含 `*.msix` 与 `Add-AppPackage.ps1`）。用于信任的签名证书 `GameLibrary_TemporaryKey.pfx`（空密码）**不在产物内**，需从仓库 `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` 获取并安装到“受信任的人”后再安装。
 - **GameLibrary-store-msixbundle**（商店提交包，未签名的 `.msixbundle`）
-  - 用于提交 Microsoft Store。上传到 Partner Center 前，请把 `src/GameLibrary.Package/Package.appxmanifest` 中的 `Identity Name` 与 `Publisher` 改为商店预留的值（同时建议把 `PublisherDisplayName` 对齐为商店发布者名称），再重新触发 CI 得到对应包。该包已设置为“框架依赖”（不含自包含运行时）且**未本地签名**，由商店在上架时重新签名。
+  - 用于提交 Microsoft Store，详细步骤见下方“商店提交”小节。
+
+---
+
+### 商店提交（GameLibrary-store-msixbundle）
+
+该产物是**未签名**的 `.msixbundle`（框架依赖、不含自包含运行时），用于上架 Microsoft Store，由商店在发布时重新签名。使用步骤：
+
+1. 在 **Microsoft Partner Center** 创建应用并预留名称，获取商店分配的 `Identity Name` 与 `Publisher`（以及发布者显示名）。
+2. 修改仓库 `src/GameLibrary.Package/Package.appxmanifest`：
+   - `<Identity Name="GameLibrary" Publisher="CN=GameLibrary" .../>` 改为商店预留的值（`Name` 与 `Publisher` 必须完全一致）；
+   - `<Properties>` 下的 `<PublisherDisplayName>` 改为你的商店发布者名称。
+3. 提交并推送到 `main`（或手动 `workflow_dispatch`）重新触发 CI，得到使用新标识的 `GameLibrary-store-msixbundle`。
+4. 登录 Partner Center → 进入该应用 → “提交” → “包” → 上传 `.msixbundle`。商店会自动处理 Windows App SDK 运行时依赖，并在上架时重新签名。
+5. 注意：不要在本地对该包自行签名；CI 已设置 `AppxPackageSigningEnabled=false`，保持未签名状态即可提交。
 
 ---
 
