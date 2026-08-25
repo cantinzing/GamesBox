@@ -432,11 +432,34 @@ namespace winrt::GameLibrary::implementation
         {
             status.Text(L"已激活");
             status.Foreground(OkBrush());
+            RemoveActivationButton().IsEnabled(true);
         }
         else
         {
             status.Text(L"未激活");
             status.Foreground(WarnBrush());
+            RemoveActivationButton().IsEnabled(false);
         }
+    }
+
+    void SettingsPage::RemoveActivation_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        if (m_confirmDialog == nullptr)
+        {
+            m_confirmDialog = winrt::Microsoft::UI::Xaml::Controls::ContentDialog();
+            m_confirmDialog.Title(box_value(L"移除激活"));
+            m_confirmDialog.Content(box_value(L"确定要移除本机的激活状态吗？\n移除后需重新激活才能使用导入功能。"));
+            m_confirmDialog.PrimaryButtonText(L"确定移除");
+            m_confirmDialog.CloseButtonText(L"取消");
+            m_confirmDialog.PrimaryButtonClick([this](IInspectable const&, ContentDialogButtonClickEventArgs const&)
+            {
+                Licensing::LicenseManager::Reset();
+                UpdateActivationStatus();
+                ActivationStatusText().Text(L"已移除激活");
+                ActivationStatusText().Foreground(WarnBrush());
+            });
+        }
+        m_confirmDialog.XamlRoot(XamlRoot());
+        m_confirmDialog.ShowAsync();
     }
 }

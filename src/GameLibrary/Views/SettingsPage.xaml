@@ -234,6 +234,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="16">
                         <Button x:Name="ActivateButton" Content="激活" Click="ActivateButton_Click" Style="{StaticResource SettingsGlassButtonStyle}" />
+                        <Button x:Name="RemoveActivationButton" Content="移除激活" Click="RemoveActivation_Click" Style="{StaticResource SettingsGlassButtonStyle}" />
                         <TextBlock x:Name="ActivationStatusText" VerticalAlignment="Center" />
                     </StackPanel>
                 </StackPanel>
