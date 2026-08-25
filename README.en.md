@@ -261,4 +261,4 @@ This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled 
 
 ## License
 
-This project is open source under the **MIT License** — see the [`LICENSE`](LICENSE) file at the repository root. In short: you may freely use, copy, modify, and distribute it (including closed-source or commercial use) as long as the copyright and permission notices are retained, and the software is provided “as is” without warranty of any kind.
+This project is licensed under **CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International)** — see the [`LICENSE`](LICENSE) file at the repository root. You may share and adapt it, provided you give credit, **do not use it for any commercial purpose**, and distribute derivatives under the same license. The software is provided “as is” without warranty.
