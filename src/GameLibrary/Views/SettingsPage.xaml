@@ -211,34 +211,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- 软件激活 -->
-            <Border Style="{StaticResource SettingsSectionStyle}">
-                <StackPanel Spacing="14">
-                    <TextBlock Text="软件激活" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="本软件为付费授权。复制下方机器码发送给开发者以获取激活码，激活后绑定本机。"
-                               FontFamily="Hanken Grotesk, Segoe UI" FontSize="12" Foreground="#8D90A1" TextWrapping="Wrap" />
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="机器码" Style="{StaticResource SettingsFieldLabelStyle}" />
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="MachineCodeBox" Grid.Column="0" Style="{StaticResource SettingsInputStyle}" IsReadOnly="True" />
-                            <Button x:Name="CopyMachineCodeButton" Grid.Column="1" Content="复制" Click="CopyMachineCode_Click" Style="{StaticResource SettingsGlassButtonStyle}" />
-                        </Grid>
-                    </StackPanel>
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="激活码" Style="{StaticResource SettingsFieldLabelStyle}" />
-                        <TextBox x:Name="ActivationCodeBox" Style="{StaticResource SettingsInputStyle}" PlaceholderText="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <Button x:Name="ActivateButton" Content="激活" Click="ActivateButton_Click" Style="{StaticResource SettingsGlassButtonStyle}" />
-                        <TextBlock x:Name="ActivationStatusText" VerticalAlignment="Center" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
             <!-- 关于 -->
             <Border Style="{StaticResource SettingsSectionStyle}">
                 <StackPanel Spacing="12">

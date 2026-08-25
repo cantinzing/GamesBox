@@ -238,35 +238,6 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ---
 
-## 激活与授权
-
-本软件为付费授权，采用**纯离线激活**（机器码 + HMAC 激活码，不联网校验）。
-
-### 获取激活码
-
-1. 客户安装并打开软件，进入「设置 → 软件激活」，复制页面上的「机器码」。
-2. 你用机器码通过 `tools/gen_license.ps1`（推荐，无需 Python）生成激活码：
-
-   ```powershell
-   .\tools\gen_license.ps1 "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
-   ```
-
-   输出形如 `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX` 的激活码，将其发给客户。
-3. 客户在「激活码」输入框粘贴并点击「激活」即可；激活码绑定本机，重装系统或更换机器需重新激活。
-
-> 生成器的密钥与客户端共用同一算法（HMAC-SHA256 + Base32），只有开发者持有生成能力；实现见 `src/GameLibrary/Licensing/LicenseManager.cpp`。
-
-### 未激活时的限制
-
-未激活时，导入游戏功能会被拦截并提示先激活；浏览、设置、元数据查看等功能不受影响。
-
-### 开发者工具
-
-- `tools/gen_license.ps1` — 激活码生成器（PowerShell，推荐）。
-- `tools/gen_license.py` — 同上（Python 版，需本机有可用的 Python 解释器）。
-
----
-
 ## 数据与隐私
 
 - **数据库** — 游戏元数据、标签、游玩记录保存在本机 `%LOCALAPPDATA%\GameLibrary\games.db`（SQLite，MSIX 内会重定向到包的本地数据目录）。

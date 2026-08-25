@@ -10,7 +10,6 @@
 #include "../Services/Localization.h"
 #include "../Services/VisualEffects.h"
 #include "../Sources/LocalSourceAdapter.h"
-#include "../Licensing/LicenseManager.h"
 
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
@@ -151,15 +150,6 @@ namespace winrt::GameLibrary::implementation
         winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         Services::Localization::Instance().LocalizeVisualTree(Content());
-        if (!Licensing::LicenseManager::IsActivated())
-        {
-            ImportButton().IsEnabled(false);
-            StatusText().Text(L"导入功能需激活后使用，请前往「设置 → 软件激活」输入激活码。");
-        }
-        else
-        {
-            ImportButton().IsEnabled(true);
-        }
     }
 
     Core::GameSourceType ImportWizardPage::CurrentSource() const
@@ -503,16 +493,6 @@ namespace winrt::GameLibrary::implementation
     winrt::Windows::Foundation::IAsyncAction ImportWizardPage::ImportButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         auto keepAlive = get_strong();
-        if (!Licensing::LicenseManager::IsActivated())
-        {
-            ContentDialog dlg;
-            dlg.Title(box_value(L"需要激活"));
-            dlg.Content(box_value(L"导入游戏功能需要激活后使用。\n请前往「设置 → 软件激活」输入激活码。"));
-            dlg.CloseButtonText(L"确定");
-            dlg.XamlRoot(XamlRoot());
-            co_await dlg.ShowAsync();
-            co_return;
-        }
         auto& services = Services::AppServices::Instance();
         if (!services.Initialized())
         {
