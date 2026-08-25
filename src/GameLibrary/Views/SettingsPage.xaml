@@ -211,17 +211,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- 关于 -->
-            <Border Style="{StaticResource SettingsSectionStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="关于" Style="{StaticResource SettingsLabelStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="作者：" Style="{StaticResource SettingsFieldLabelStyle}" />
-                        <HyperlinkButton Content="cantinzing@163.com" NavigateUri="mailto:cantinzing@163.com" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
             <!-- 保存 -->
         <StackPanel Orientation="Horizontal" Spacing="16" Margin="4,0,0,0">
             <Button Content="保存设置" Tag="i18n:settings.save" Click="SaveButton_Click" Style="{StaticResource SettingsGlassButtonStyle}" />
