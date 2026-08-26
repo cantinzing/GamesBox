@@ -273,7 +273,7 @@ When unactivated, the **import** feature is blocked with a prompt to activate fi
 
 ### Developer tools
 
-- `tools/gen_license_gui.cpp` — GUI activation-code generator (C++/Win32, no command line). Build: `cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`.
+- `tools/gen_license_gui.cpp` — GUI activation-code generator (C++/Win32, no command line). Build in a terminal with the MSVC environment initialized (open "x64 Native Tools Command Prompt for VS", or run `call vcvars64.bat` first; works in both PowerShell and cmd): `cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`.
 - `tools/gen_license.cpp` — command-line activation-code generator (C++/BCrypt; compile with the command above).
 - `tools/license_sign.h` — the shared signing logic used by both generators (read private key, SHA-256, ECDSA sign, Base32 grouping).
 - `tools/private_key.bin` — the ECDSA private key (**gitignored; do not commit or ship**). To rotate keys, regenerate and replace the embedded public-key blob in `src/GameLibrary/Licensing/LicenseCrypto.cpp`.

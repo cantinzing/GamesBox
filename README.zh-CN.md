@@ -277,7 +277,7 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ### 开发者工具
 
-- `tools/gen_license_gui.cpp` — 图形界面激活码生成器（C++/Win32，免命令行）。编译：`cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`。
+- `tools/gen_license_gui.cpp` — 图形界面激活码生成器（C++/Win32，免命令行）。编译（需在已初始化 MSVC 环境的终端执行：可打开“x64 Native Tools Command Prompt for VS”，或先 `call vcvars64.bat` 再执行；PowerShell/cmd 均可）：`cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`。
 - `tools/gen_license.cpp` — 命令行版激活码生成器（C++/BCrypt，需 MSVC 环境编译；见上方命令）。
 - `tools/license_sign.h` — 上述两者共用的签名逻辑（读取私钥、SHA-256、ECDSA 签名、Base32 分组）。
 - `tools/private_key.bin` — ECDSA 私钥，**已 gitignore，请勿提交或随软件分发**。如需重置密钥，重新生成后替换 `src/GameLibrary/Licensing/LicenseCrypto.cpp` 中内置的公钥 blob 即可。
