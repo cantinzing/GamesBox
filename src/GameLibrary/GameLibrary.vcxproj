@@ -46,7 +46,7 @@
          仅对 Release 生效（部署产物）；Debug 保持普通 unpackaged，便于本机开发调试。
          注意：自包含 exe 在“已安装 WindowsAppRuntime 框架包”的机器上会与框架包冲突（0xC0000602），
          在干净的 Win10/Win11 上正常。 -->
-    <WindowsAppSDKSelfContained Condition="'$(Configuration)'=='Release'">true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(Configuration)'=='Release'">false</WindowsAppSDKSelfContained>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
     <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
@@ -225,7 +225,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250602001" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" Condition="'$(VcpkgRoot)' != '' and Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets')" />

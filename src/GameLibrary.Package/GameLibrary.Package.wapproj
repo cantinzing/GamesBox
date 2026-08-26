@@ -33,7 +33,7 @@
     <WapProjPath Condition="'$(WapProjPath)'==''">$(MSBuildExtensionsPath)\Microsoft\DesktopBridge\</WapProjPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
   </PropertyGroup>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.props" />
   <PropertyGroup>
@@ -71,9 +71,7 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.png" />
   </ItemGroup>
-  <ItemGroup Condition="'$(Configuration)'=='Release' and '$(Platform)'=='x64'">
-    <Content Include="..\GameLibrary\x64\Release\GameLibrary\Microsoft.WindowsAppRuntime.Bootstrap.dll" />
-  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\GameLibrary\GameLibrary.vcxproj">
       <Project>{7B7F2C0E-3E9D-4A51-8F4C-6D1B2A3C4D5E}</Project>
@@ -81,7 +79,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002">
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250602001">
       <IncludeAssets>build</IncludeAssets>
     </PackageReference>
   </ItemGroup>
