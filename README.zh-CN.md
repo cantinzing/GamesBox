@@ -248,19 +248,28 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 - 客户端**仅内置公钥**用于验签；私钥（`tools/private_key.bin`）仅保存在开发者本地、**永不入库也不随软件分发**。
 - 因为验签只需公钥，逆向也无法伪造激活码（没有私钥就无法生成能通过校验的签名），相比对称 HMAC 方案可彻底杜绝 keygen。
 
-### 获取激活码
+### 获取激活码（开发者侧）
 
 1. 客户安装并打开软件，进入「设置 → 软件激活」，复制页面上的「机器码」。
-2. 开发者用机器码通过 `tools/gen_license.cpp` 生成激活码（C++/BCrypt 工具，需 Visual Studio 的 MSVC 环境）：
+2. 用该机器码生成激活码，二选一：
+   - **图形界面（推荐，免命令行）**：双击 `tools/gen_license_gui.exe`，输入框默认已是本机机器码；给客户生成时，把客户的机器码粘贴进去，点「生成激活码」，再点「复制到剪贴板」即可。该工具会从**自身所在目录**读取 `private_key.bin`，请务必与私钥放在同一文件夹。
+   - **命令行**：在“x64 Native Tools Command Prompt for VS”中编译并运行：
 
-   ```powershell
-   # 在“x64 Native Tools Command Prompt for VS”中执行：
-   cl /EHsc /std:c++20 /I src\GameLibrary tools\gen_license.cpp /link bcrypt.lib advapi32.lib /OUT:tools\gen_license.exe
-   .\tools\gen_license.exe "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
-   ```
+     ```powershell
+     cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license.cpp /link bcrypt.lib advapi32.lib /OUT:tools\gen_license.exe
+     .\tools\gen_license.exe "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
+     ```
 
-   输出形如 `XXXXX-XXXXX-XXXXX-...` 的激活码，将其发给客户。
-3. 客户在「激活码」输入框粘贴并点击「激活」即可；激活码绑定本机，重装系统或更换机器需重新激活。
+   两种方式的输出都形如 `XXXXX-XXXXX-XXXXX-...` 的激活码。
+3. 将激活码发给客户。
+
+### 客户端如何激活（用户侧）
+
+1. 打开软件，进入「设置 → 软件激活」。
+2. 页面显示本机「机器码」（即系统 `MachineGuid`）；如需离线激活，把机器码发给开发者换取激活码。
+3. 在「激活码」输入框粘贴开发者给的激活码，点击「激活」。
+4. 程序用内置**公钥**对 `SHA-256(机器码)` 做 ECDSA-P256 验签：通过则把激活码写入本机注册表 `HKCU\Software\GameLibrary` 的 `ActivationCode`，状态变为「已激活」；失败则提示无效。
+5. 激活码绑定本机，重装系统或更换机器需重新生成；如需清除，可在设置页点「移除激活」（会二次确认）。
 
 ### 未激活时的限制
 
@@ -268,7 +277,9 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 
 ### 开发者工具
 
-- `tools/gen_license.cpp` — 激活码生成器（C++/BCrypt，需 MSVC 环境编译；见上方命令）。
+- `tools/gen_license_gui.cpp` — 图形界面激活码生成器（C++/Win32，免命令行）。编译：`cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`。
+- `tools/gen_license.cpp` — 命令行版激活码生成器（C++/BCrypt，需 MSVC 环境编译；见上方命令）。
+- `tools/license_sign.h` — 上述两者共用的签名逻辑（读取私钥、SHA-256、ECDSA 签名、Base32 分组）。
 - `tools/private_key.bin` — ECDSA 私钥，**已 gitignore，请勿提交或随软件分发**。如需重置密钥，重新生成后替换 `src/GameLibrary/Licensing/LicenseCrypto.cpp` 中内置的公钥 blob 即可。
 
 ---

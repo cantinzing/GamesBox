@@ -16,8 +16,8 @@
 
 ## 激活与授权 / Activation
 
-付费授权采用纯离线激活（机器码 + ECDSA-P256 签名激活码）。获取激活码的方法与生成器见各语言文档的「激活与授权」小节。
-Paid license uses offline machine-code + ECDSA-P256 signed activation code. How to mint codes and the generator tools are in the "Activation & Licensing" section of the language docs.
+付费授权采用纯离线激活（机器码 + ECDSA-P256 签名激活码）。图形界面生成器为 `tools/gen_license_gui.exe`（双击即用），命令行生成器与激活流程见各语言文档的「激活与授权」小节。
+Paid license uses offline machine-code + ECDSA-P256 signed activation code. The GUI generator is `tools/gen_license_gui.exe` (double-click to run); the CLI generator and the full activation flow are in the "Activation & Licensing" section of the language docs.
 
 ## 开源协议 / License
 

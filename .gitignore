@@ -40,6 +40,7 @@ tools/private_key.bin
 
 # 本地生成器构建产物
 tools/gen_license.exe
+tools/gen_license_gui.exe
 *.obj
 
 

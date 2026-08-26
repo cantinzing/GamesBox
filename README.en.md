@@ -244,19 +244,28 @@ This software is paid-licensed and uses **fully offline activation** (machine co
 - The client embeds **only the public key** for verification; the private key (`tools/private_key.bin`) stays on the developer's machine, is **never committed and never shipped**.
 - Because verification needs only the public key, reverse engineering cannot forge codes (no private key means no valid signature), eliminating keygen — unlike the old symmetric HMAC scheme.
 
-### Obtaining an activation code
+### Obtaining an activation code (developer side)
 
 1. The customer installs and opens the app, goes to **Settings → Software Activation**, and copies the **machine code** shown there.
-2. You generate the activation code from that machine code using `tools/gen_license.cpp` (C++/BCrypt tool, needs the MSVC environment):
+2. Generate the activation code from that machine code, either way:
+   - **GUI (recommended, no command line)**: double-click `tools/gen_license_gui.exe`. The input box is pre-filled with this machine's machine code; to issue for a customer, paste their machine code, click **Generate activation code**, then **Copy to clipboard**. The tool reads `private_key.bin` from **its own folder**, so keep it next to the private key.
+   - **Command line**: in an "x64 Native Tools Command Prompt for VS":
 
-   ```powershell
-   # In an "x64 Native Tools Command Prompt for VS":
-   cl /EHsc /std:c++20 /I src\GameLibrary tools\gen_license.cpp /link bcrypt.lib advapi32.lib /OUT:tools\gen_license.exe
-   .\tools\gen_license.exe "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
-   ```
+     ```powershell
+     cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license.cpp /link bcrypt.lib advapi32.lib /OUT:tools\gen_license.exe
+     .\tools\gen_license.exe "7b271c8a-d803-4d0d-952a-fae99d39eb8b"
+     ```
 
-   It prints an activation code like `XXXXX-XXXXX-XXXXX-...`; send it to the customer.
-3. The customer pastes it into the **Activation code** box and clicks **Activate**; the code is bound to that machine and must be re-issued after a reinstall or on a different machine.
+   Both produce an activation code like `XXXXX-XXXXX-XXXXX-...`.
+3. Send the activation code to the customer.
+
+### How the client activates (user side)
+
+1. Open the app and go to **Settings → Software Activation**.
+2. The page shows this machine's **machine code** (the system `MachineGuid`); send it to the developer to obtain an activation code.
+3. Paste the developer's activation code into the **Activation code** box and click **Activate**.
+4. The app verifies the ECDSA-P256 signature over `SHA-256(machine code)` using its **embedded public key**: on success it writes the code to `HKCU\Software\GameLibrary` (`ActivationCode`) and the status becomes **Activated**; otherwise it reports invalid.
+5. The code is bound to the machine and must be re-issued after a reinstall or on a different machine. To clear it, click **Remove activation** in Settings (with a confirmation prompt).
 
 ### Limits when not activated
 
@@ -264,7 +273,9 @@ When unactivated, the **import** feature is blocked with a prompt to activate fi
 
 ### Developer tools
 
-- `tools/gen_license.cpp` — activation-code generator (C++/BCrypt; compile with the command above).
+- `tools/gen_license_gui.cpp` — GUI activation-code generator (C++/Win32, no command line). Build: `cl /EHsc /std:c++20 /utf-8 /I src\GameLibrary tools\gen_license_gui.cpp /link user32.lib gdi32.lib bcrypt.lib advapi32.lib /OUT:tools\gen_license_gui.exe /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup`.
+- `tools/gen_license.cpp` — command-line activation-code generator (C++/BCrypt; compile with the command above).
+- `tools/license_sign.h` — the shared signing logic used by both generators (read private key, SHA-256, ECDSA sign, Base32 grouping).
 - `tools/private_key.bin` — the ECDSA private key (**gitignored; do not commit or ship**). To rotate keys, regenerate and replace the embedded public-key blob in `src/GameLibrary/Licensing/LicenseCrypto.cpp`.
 
 ---
