@@ -41,7 +41,7 @@ jobs:
       - name: Build sideload MSIX
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained= "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=true "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
 
       # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it)
       - name: Build store bundle
