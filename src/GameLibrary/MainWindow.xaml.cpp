@@ -77,10 +77,10 @@ namespace winrt::GameLibrary::implementation
 MainWindow::MainWindow()
     {
         s_instance = this;
-        InitializeComponent();
-        Title(L"GameCentral");
-        ConfigureBorderlessWindow();
-        Services::AppServices::Instance().Initialize();
+    InitializeComponent();
+    Title(L"GameCentral");
+    ConfigureBorderlessWindow();
+    Services::AppServices::Instance().Initialize();
 
         // 窗口激活后再应用原生标题栏按钮颜色（激活前设置会被忽略）
         Activated([this](IInspectable const&, WindowActivatedEventArgs const&) {

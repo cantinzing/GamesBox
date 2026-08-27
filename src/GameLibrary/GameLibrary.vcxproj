@@ -38,15 +38,13 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumWindowsTargetPlatformVersion>10.0</MinimumWindowsTargetPlatformVersion>
     <AppContainerApplication>false</AppContainerApplication>
-    <AppxPackage>false</AppxPackage>
-    <WindowsPackageType>None</WindowsPackageType>
+    <AppxPackage Condition="'$(AppxPackage)'==''">true</AppxPackage>
+    <WindowsPackageType Condition="'$(WindowsPackageType)'==''">None</WindowsPackageType>
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
-    <!-- 自包含部署：把 Windows App SDK 运行时 DLL 随 exe 一起输出，Win10/Win11 都无需单独安装运行时。
-         仅对 Release 生效（部署产物）；Debug 保持普通 unpackaged，便于本机开发调试。
-         注意：自包含 exe 在“已安装 WindowsAppRuntime 框架包”的机器上会与框架包冲突（0xC0000602），
-         在干净的 Win10/Win11 上正常。 -->
-    <WindowsAppSDKSelfContained Condition="'$(Configuration)'=='Release'">false</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <!-- For packaged builds (AppxPackage=true), disable bootstrap auto-init since the framework package handles initialization -->
+    <WindowsAppSdkBootstrapInitialize Condition="'$(AppxPackage)'=='true'">false</WindowsAppSdkBootstrapInitialize>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
     <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
@@ -95,6 +93,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions Condition="'$(Configuration)'!='Debug'">/OPT:NOREF /OPT:NOICF %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -272,13 +271,13 @@
       <AdditionalIncludeDirectories>$(IntDir)Views\;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
-  <Target Name="CompileXamlGeneratedSourcesStandalone" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" BeforeTargets="ClCompile" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
+  <Target Name="CompileXamlGeneratedSourcesStandalone" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" BeforeTargets="ClCompile" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != ''">
     <ItemGroup>
       <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp')" />
       <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp')" />
     </ItemGroup>
   </Target>
-  <Target Name="AddWinUIWinmdReferencesForStandaloneBuild" BeforeTargets="MarkupCompilePass1;MarkupCompilePass2" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
+  <Target Name="AddWinUIWinmdReferencesForStandaloneBuild" BeforeTargets="MarkupCompilePass1;MarkupCompilePass2" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != ''">
     <PropertyGroup>
       <_WinUIMarkupUapTargetVersion Condition="'$(TargetPlatformVersion)' == '' OR '$(TargetPlatformVersion)' &lt; '10.0.18362.0'">uap10.0.17763</_WinUIMarkupUapTargetVersion>
       <_WinUIMarkupUapTargetVersion Condition="'$(_WinUIMarkupUapTargetVersion)' == ''">uap10.0.18362</_WinUIMarkupUapTargetVersion>
@@ -294,4 +293,5 @@
       <XamlReferencesToCompile Include="$(WindowsSdkDir)References\$(TargetPlatformVersion)\*\*\*.winmd" />
     </ItemGroup>
   </Target>
+
 </Project>
