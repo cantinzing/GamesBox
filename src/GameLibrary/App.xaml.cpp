@@ -30,6 +30,7 @@ namespace winrt::GameLibrary::implementation
 
     App::App()
     {
+        InitializeComponent();
 #if defined _DEBUG && !defined DISABLE_XAML_GENERATED_BREAK_ON_UNHANDLED_EXCEPTION
         UnhandledException([](IInspectable const&, UnhandledExceptionEventArgs const& e)
         {
