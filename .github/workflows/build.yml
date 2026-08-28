@@ -52,11 +52,11 @@ jobs:
         run: |
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
 
-      # 3) Self-contained portable build (no framework package needed on target machine)
-      - name: Build self-contained portable
+      # 3) 便携版（框架依赖；运行时随 WinAppSDK 框架包，目标机安装过框架即可运行）
+      - name: Build portable (framework-dependent)
         shell: powershell
         run: |
-          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /t:Rebuild /m
+          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=false /t:Rebuild /m
 
       # 基础代码加固：用 UPX 对自包含 exe 加壳（压缩 + 简单反静态分析）。
       # 这是最低成本的防护；如需强防护（Anti-Debug / 虚拟化 / 反 dump），
