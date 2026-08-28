@@ -63,26 +63,6 @@ namespace winrt::GameLibrary::implementation
             return L"file:///" + path + L"?v=" + std::to_wstring(version);
         }
 
-        void WriteDiag(std::wstring const& msg)
-        {
-            try
-            {
-                std::wstring out = L"[DIAG] " + msg + L"\r\n";
-                HANDLE h = CreateFileW(L"C:\\Users\\canti\\AppData\\Local\\Temp\\opencode\\diag.log",
-                    GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (h != INVALID_HANDLE_VALUE)
-                {
-                    SetFilePointer(h, 0, nullptr, FILE_END);
-                    DWORD written = 0;
-                    WriteFile(h, out.c_str(), static_cast<DWORD>(out.size() * sizeof(wchar_t)), &written, nullptr);
-                    CloseHandle(h);
-                }
-            }
-            catch (...)
-            {
-            }
-        }
-
         // 封面占位渐变（品牌蓝紫，从每款游戏取一个稳定的色相偏移）
         LinearGradientBrush MakeCoverBrush(Core::Game const& game)
         {
@@ -568,7 +548,6 @@ namespace winrt::GameLibrary::implementation
     {
         try
         {
-            WriteDiag(L"home.bg: load gameId=" + std::to_wstring(gameId) + L" path=" + path);
             if (path.empty())
             {
                 BackgroundImage().Opacity(0);
@@ -577,20 +556,17 @@ namespace winrt::GameLibrary::implementation
             auto bitmap = winrt::Microsoft::UI::Xaml::Media::Imaging::BitmapImage();
             bitmap.DecodePixelWidth(1600);
             auto uri = MakeFileUri(path);
-            WriteDiag(L"home.bg: uri=" + uri);
             bitmap.UriSource(winrt::Windows::Foundation::Uri(uri));
             BackgroundImage().Stretch(Stretch::UniformToFill);
             BackgroundImage().Source(bitmap);
             BackgroundImage().Opacity(0.7);
         }
-        catch (winrt::hresult_error const& e)
+        catch (winrt::hresult_error const&)
         {
-            WriteDiag(L"home.bg: EXCEPTION " + std::wstring(winrt::to_hstring(e.message())));
             BackgroundImage().Opacity(0);
         }
         catch (...)
         {
-            WriteDiag(L"home.bg: UNKNOWN EXCEPTION");
             BackgroundImage().Opacity(0);
         }
     }

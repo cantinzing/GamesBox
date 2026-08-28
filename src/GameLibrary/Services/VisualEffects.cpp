@@ -2,12 +2,14 @@
 #include "VisualEffects.h"
 
 #include <winrt/Microsoft.UI.Composition.h>
+#include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Composition;
+using namespace Microsoft::UI::Dispatching;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Hosting;
 using namespace Microsoft::UI::Xaml::Input;
@@ -53,31 +55,46 @@ namespace Services
     {
         try
         {
-            auto compositor = GetCompositor(element);
-            auto shadow = compositor.CreateDropShadow();
-            shadow.Color(winrt::Windows::UI::ColorHelper::FromArgb(a, r, g, b));
-            shadow.BlurRadius(blurRadius);
-            shadow.Offset(float3{ 0.0f, offsetY, 0.0f });
-            shadow.Opacity(1.0f);
-
-            // 用 SpriteVisual 承载阴影，并通过 SetElementChildVisual 附加到元素
-            auto shadowVisual = compositor.CreateSpriteVisual();
-            shadowVisual.Shadow(shadow);
-            // 避免空 SpriteVisual 渲染为不透明白色矩形，需给一个透明内容
-            shadowVisual.Brush(compositor.CreateColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(0, 0, 0, 0)));
-            ElementCompositionPreview::SetElementChildVisual(element, shadowVisual);
-
-            // 阴影几何跟随元素尺寸
-            auto updateSize = [shadowVisual](float2 size) {
-                if (size.x > 0.0f && size.y > 0.0f)
+            // 延迟到下一 UI 回合：元素必须先接入可视树，否则 ElementCompositionPreview
+            // 在断开连接的元素上会触发 XAML 直接 failfast（无法被 try/catch 捕获）。
+            auto dq = DispatcherQueue::GetForCurrentThread();
+            if (!dq)
+            {
+                return;
+            }
+            dq.TryEnqueue([element, a, r, g, b, blurRadius, offsetY]() {
+                try
                 {
-                    shadowVisual.Size(size);
+                    auto compositor = GetCompositor(element);
+                    auto shadow = compositor.CreateDropShadow();
+                    shadow.Color(winrt::Windows::UI::ColorHelper::FromArgb(a, r, g, b));
+                    shadow.BlurRadius(blurRadius);
+                    shadow.Offset(float3{ 0.0f, offsetY, 0.0f });
+                    shadow.Opacity(1.0f);
+
+                    // 用 SpriteVisual 承载阴影，并通过 SetElementChildVisual 附加到元素
+                    auto shadowVisual = compositor.CreateSpriteVisual();
+                    shadowVisual.Shadow(shadow);
+                    // 避免空 SpriteVisual 渲染为不透明白色矩形，需给一个透明内容
+                    shadowVisual.Brush(compositor.CreateColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(0, 0, 0, 0)));
+                    ElementCompositionPreview::SetElementChildVisual(element, shadowVisual);
+
+                    // 阴影几何跟随元素尺寸
+                    auto updateSize = [shadowVisual](float2 size) {
+                        if (size.x > 0.0f && size.y > 0.0f)
+                        {
+                            shadowVisual.Size(size);
+                        }
+                    };
+                    updateSize(element.ActualSize());
+                    element.SizeChanged([updateSize](IInspectable const&, SizeChangedEventArgs const& e) {
+                        auto size = e.NewSize();
+                        updateSize(float2{ size.Width, size.Height });
+                    });
                 }
-            };
-            updateSize(element.ActualSize());
-            element.SizeChanged([updateSize](IInspectable const&, SizeChangedEventArgs const& e) {
-                auto size = e.NewSize();
-                updateSize(float2{ size.Width, size.Height });
+                catch (...)
+                {
+                }
             });
         }
         catch (...)
@@ -89,27 +106,40 @@ namespace Services
     {
         try
         {
-            auto compositor = GetCompositor(element);
-            auto visual = ElementCompositionPreview::GetElementVisual(element);
-            visual.Scale(float3{ 1.0f, 1.0f, 1.0f });
-            KeepCentered(element, visual);
-            auto easing = EaseOutCubic(compositor);
+            auto dq = DispatcherQueue::GetForCurrentThread();
+            if (!dq)
+            {
+                return;
+            }
+            dq.TryEnqueue([element, scale]() {
+                try
+                {
+                    auto compositor = GetCompositor(element);
+                    auto visual = ElementCompositionPreview::GetElementVisual(element);
+                    visual.Scale(float3{ 1.0f, 1.0f, 1.0f });
+                    KeepCentered(element, visual);
+                    auto easing = EaseOutCubic(compositor);
 
-            element.PointerEntered([compositor, easing, scale](IInspectable const& sender, PointerRoutedEventArgs const&) {
-                auto v = ElementCompositionPreview::GetElementVisual(sender.as<UIElement>());
-                auto anim = compositor.CreateVector3KeyFrameAnimation();
-                anim.Duration(std::chrono::milliseconds(250));
-                anim.Target(L"Scale");
-                anim.InsertKeyFrame(1.0f, float3{ scale, scale, 1.0f }, easing);
-                v.StartAnimation(L"Scale", anim);
-            });
-            element.PointerExited([compositor, easing](IInspectable const& sender, PointerRoutedEventArgs const&) {
-                auto v = ElementCompositionPreview::GetElementVisual(sender.as<UIElement>());
-                auto anim = compositor.CreateVector3KeyFrameAnimation();
-                anim.Duration(std::chrono::milliseconds(250));
-                anim.Target(L"Scale");
-                anim.InsertKeyFrame(1.0f, float3{ 1.0f, 1.0f, 1.0f }, easing);
-                v.StartAnimation(L"Scale", anim);
+                    element.PointerEntered([compositor, easing, scale](IInspectable const& sender, PointerRoutedEventArgs const&) {
+                        auto v = ElementCompositionPreview::GetElementVisual(sender.as<UIElement>());
+                        auto anim = compositor.CreateVector3KeyFrameAnimation();
+                        anim.Duration(std::chrono::milliseconds(250));
+                        anim.Target(L"Scale");
+                        anim.InsertKeyFrame(1.0f, float3{ scale, scale, 1.0f }, easing);
+                        v.StartAnimation(L"Scale", anim);
+                    });
+                    element.PointerExited([compositor, easing](IInspectable const& sender, PointerRoutedEventArgs const&) {
+                        auto v = ElementCompositionPreview::GetElementVisual(sender.as<UIElement>());
+                        auto anim = compositor.CreateVector3KeyFrameAnimation();
+                        anim.Duration(std::chrono::milliseconds(250));
+                        anim.Target(L"Scale");
+                        anim.InsertKeyFrame(1.0f, float3{ 1.0f, 1.0f, 1.0f }, easing);
+                        v.StartAnimation(L"Scale", anim);
+                    });
+                }
+                catch (...)
+                {
+                }
             });
         }
         catch (...)
