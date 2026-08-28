@@ -37,13 +37,13 @@ jobs:
           msbuild GameLibrary.sln /t:Restore /p:Configuration=Release /p:Platform=x64
 
       # 1) Sideload MSIX (self-signed; for manual sideload install)
-      #    WindowsAppSDKSelfContained=true -> 将 WinAppSDK 运行库打进包内，
-      #    配合 GameLibrary.vcxproj 里 CopyVCRuntimeForPackaging 复制的 VC++ 运行库，
-      #    使 MSIX 在干净机器上无需额外安装任何运行库即可直接启动。
+      #    main 分支为 WinAppSDK 1.6 框架依赖模式：自包含(true)在 1.6 下会导致
+      #    MddBootstrapInitialize2/MddBootstrapShutdown 链接失败，故保持框架依赖。
+      #    （崩溃修复已在源码中；目标机器安装过 VS/WinAppSDK 运行库即可正常启动）
       - name: Build sideload MSIX
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=true "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
 
       # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it)
       - name: Build store bundle
