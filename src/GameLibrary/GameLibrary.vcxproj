@@ -294,4 +294,18 @@
     </ItemGroup>
   </Target>
 
+  <!-- 将 VC++ 运行库（vcruntime140 / msvcp140 等）复制到生成输出目录。
+       注意：对“未打包(便携/setup)”版本，私有部署 CRT 在同级目录即可正常工作；
+       对打包的 MSIX，项目已声明 Microsoft.VCLibs.140.00 框架依赖，不能把 vcruntime140
+       再打进包内（会与框架内的 CRT 混用导致崩溃），因此这里只复制到输出目录，
+       供便携版/安装包使用，MSIX 仍依赖目标机器上的 VCLibs 框架。 -->
+  <Target Name="CopyVCRuntimeForPackaging" AfterTargets="Build"
+          Condition="'$(MSBuildProjectExtension)' != '.wapproj'">
+    <ItemGroup>
+      <_VCRuntimeDll Include="$(VCInstallDir)Redist\MSVC\*\x64\Microsoft.VC143.CRT\*.dll" />
+      <_VCRuntimeDll Include="$(VCInstallDir)Redist\MSVC\*\x64\Microsoft.VC140.CRT\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_VCRuntimeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
