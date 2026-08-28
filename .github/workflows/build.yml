@@ -51,7 +51,8 @@ jobs:
         run: |
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
 
-      # 3) 便携版（框架依赖；运行时随 WinAppSDK 框架包，目标机安装过框架即可运行）
+      # 3) 便携版（框架依赖）：运行时随 WinAppSDK 框架包；目标机需安装过框架
+      #    （运行一次 MSIX 安装，或运行本 setup.exe 会自动安装框架依赖）。
       - name: Build portable (framework-dependent)
         shell: powershell
         run: |
@@ -71,6 +72,13 @@ jobs:
         shell: powershell
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+
+      - name: Stage WinAppSDK runtime installer (for clean-machine setup)
+        shell: powershell
+        run: |
+          # WinAppSDK 1.6 运行时安装包（随 setup.exe 一起分发，安装时静默安装框架依赖）
+          $url = "https://aka.ms/windowsappsdk/1.6/5/windowsappruntimeinstall.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:GITHUB_WORKSPACE\installer\WinAppRuntimeInstall.exe" -ErrorAction Stop
 
       - name: Build installer (setup.exe)
         shell: powershell
