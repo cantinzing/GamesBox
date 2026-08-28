@@ -43,6 +43,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; WindowsAppSDK 运行时安装包（由 CI 下载并随包发布到 installer\ 目录）。
+; 目标机若未安装 WindowsAppSDK 框架包，安装时静默安装，使便携 exe 在干净机器也能运行。
+; 仅当 installer\WinAppRuntimeInstall.exe 存在时才打包（本地未下载也不影响编译）。
+#if FileExists("WinAppRuntimeInstall.exe")
+Source: "WinAppRuntimeInstall.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: WinAppRuntimeInstallerExists
+#endif
 
 [Icons]
 Name: "{group}\GameLibrary"; Filename: "{app}\GameLibrary.exe"
@@ -53,3 +59,13 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Run]
 Filename: "{app}\GameLibrary.exe"; Description: "启动 GameLibrary"; Flags: nowait postinstall skipifsilent
+; 若尚未安装 WindowsAppSDK 框架，静默安装运行时（首次需联网；已安装则为快速 no-op）
+#if FileExists("WinAppRuntimeInstall.exe")
+Filename: "{tmp}\WinAppRuntimeInstall.exe"; Parameters: "--quiet"; StatusMsg: "正在安装 Windows App SDK 运行时..."; Check: WinAppRuntimeInstallerExists; Flags: runhidden waituntilterminated
+#endif
+
+[Code]
+function WinAppRuntimeInstallerExists(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{tmp}\WinAppRuntimeInstall.exe'));
+end;

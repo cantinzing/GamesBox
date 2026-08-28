@@ -73,6 +73,13 @@ jobs:
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
 
+      - name: Stage WinAppSDK runtime installer (for clean-machine setup)
+        shell: powershell
+        run: |
+          # WinAppSDK 1.7 运行时安装包（随 setup.exe 一起分发，安装时静默安装框架依赖）
+          $url = "https://aka.ms/windowsappsdk/1.7/4/windowsappruntimeinstall.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:GITHUB_WORKSPACE\installer\WinAppRuntimeInstall.exe" -ErrorAction Stop
+
       - name: Build installer (setup.exe)
         shell: powershell
         run: |
