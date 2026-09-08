@@ -52,8 +52,8 @@ jobs:
         run: |
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
 
-      # 3) 便携版（框架依赖；运行时随 WinAppSDK 框架包，目标机安装过框架即可运行）
-      - name: Build portable (framework-dependent)
+      # 3) 便携版：包含 WinAppSDK 框架包 + 安装脚本，首次运行需管理员权限安装框架
+      - name: Build portable (with bundled runtime)
         shell: powershell
         run: |
           msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=false /t:Rebuild /m
@@ -68,15 +68,12 @@ jobs:
           $exe = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe"
           if (Test-Path $exe) { upx --best --lzma "$exe" } else { Write-Host "GameLibrary.exe not found, skipping UPX" }
 
-      - name: Zip portable
+      - name: Zip portable (with WinAppSDK runtime)
         shell: powershell
         run: |
-          Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+          $portableDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
 
-      - name: Stage WinAppSDK MSIX framework packages (offline install)
-        shell: powershell
-        run: |
-          # 下载 WinAppSDK 1.7 NuGet 包，提取 x64 MSIX 框架文件供 setup.exe 离线打包
+          # 下载 WinAppSDK 1.7 NuGet 包，提取 x64 MSIX 框架文件
           $nupkg = "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk/1.7.260224002/microsoft.windowsappsdk.1.7.260224002.nupkg"
           $tmpNupkg = "$env:RUNNER_TEMP\winsdk.nupkg"
           $tmpExtract = "$env:RUNNER_TEMP\winsdk"
@@ -85,15 +82,29 @@ jobs:
           Copy-Item $tmpNupkg $zipPath -Force
           Expand-Archive -Path $zipPath -DestinationPath $tmpExtract -Force
           $msixSrc = Join-Path $tmpExtract "tools\MSIX\win10-x64"
-          $msixDest = "$env:GITHUB_WORKSPACE\installer\WinAppSDK"
+
+          # 复制 MSIX 框架文件到便携目录
+          $msixDest = Join-Path $portableDir "WinAppSDK"
           if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
           Copy-Item "$msixSrc\*.msix" $msixDest -Force
           Write-Host "Staged MSIX files:"
           Get-ChildItem $msixDest -Filter "*.msix" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1)) MB)" }
 
+          # 复制安装脚本
+          Copy-Item "$env:GITHUB_WORKSPACE\installer\install-runtime.bat" $portableDir -Force
+
+          # 打包 zip
+          Compress-Archive -Path "$portableDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+
       - name: Build installer (setup.exe)
         shell: powershell
         run: |
+          # 复制 MSIX 框架文件到 installer 目录（供 Inno Setup 打包）
+          $msixSrc = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\WinAppSDK"
+          $msixDest = "$env:GITHUB_WORKSPACE\installer\WinAppSDK"
+          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
+          Copy-Item "$msixSrc\*.msix" $msixDest -Force
+
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") -and -not (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe")) {
             choco install innosetup -y --no-progress --allow-downgrade
           }
