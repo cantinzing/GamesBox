@@ -1,5 +1,7 @@
-; Inno Setup script — packages the self-contained GameLibrary build into a
+; Inno Setup script — packages the framework-dependent GameLibrary build into a
 ; traditional setup.exe (installs to Program Files + Start Menu shortcut).
+; Also bundles the WindowsAppSDK runtime installer so setup auto-installs the
+; framework on clean machines (requires network for first-time framework download).
 ;
 ; Build locally:
 ;   iscc GameLibrary.iss /DMySourceDir="..\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="installer-output" /DMyAppVersion="1.0.0.0"
@@ -35,10 +37,6 @@ WizardStyle=modern
 DisableProgramGroupPage=no
 
 [Languages]
-; English-only by default. The Inno Setup build bundled on CI (and 6.7.3) does
-; not ship ChineseSimplified.isl; to localize the wizard, drop ChineseSimplified.isl
-; into installer/Languages/ and add:
-;   Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
@@ -59,13 +57,77 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Run]
 Filename: "{app}\GameLibrary.exe"; Description: "启动 GameLibrary"; Flags: nowait postinstall skipifsilent
-; 若尚未安装 WindowsAppSDK 框架，静默安装运行时（首次需联网；已安装则为快速 no-op）
-#if FileExists("WinAppRuntimeInstall.exe")
-Filename: "{tmp}\WinAppRuntimeInstall.exe"; Parameters: "--quiet"; StatusMsg: "正在安装 Windows App SDK 运行时..."; Check: WinAppRuntimeInstallerExists; Flags: runhidden waituntilterminated
-#endif
 
 [Code]
+const
+  WM关闭 = $0010;
+
 function WinAppRuntimeInstallerExists(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{tmp}\WinAppRuntimeInstall.exe'));
+end;
+
+// 检测 WindowsAppSDK 框架是否已安装（查找 WindowsApps 下的框架包目录）
+function IsWinAppSDKInstalled(): Boolean;
+var
+  FindRec: TFindRec;
+begin
+  Result := False;
+  // WindowsAppSDK 1.7 框架包路径模式
+  if FindFirst('C:\Program Files\WindowsApps\Microsoft.WindowsAppRuntime.1.*', FindRec) then
+  begin
+    Result := True;
+    FindClose(FindRec);
+  end;
+end;
+
+// 运行 WindowsAppSDK 运行时安装包（静默模式），返回是否成功
+function InstallWinAppRuntime(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+  if not FileExists(ExpandConstant('{tmp}\WinAppRuntimeInstall.exe')) then
+    Exit;
+  Exec(ExpandConstant('{tmp}\WinAppRuntimeInstall.exe'), '--quiet --restart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := (ResultCode = 0);
+end;
+
+// 安装完成后：检测框架，若未安装则尝试安装，失败则提示用户
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Msg: String;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+
+  // 框架已安装，直接跳过
+  if IsWinAppSDKInstalled then
+  begin
+    Log('WindowsAppSDK framework already installed.');
+    Exit;
+  end;
+
+  // 尝试安装运行时
+  Log('WindowsAppSDK framework not found. Attempting silent install...');
+  if InstallWinAppRuntime then
+  begin
+    Log('WindowsAppSDK runtime installed successfully.');
+    MsgBox('Windows App SDK 运行时已成功安装。', mbInformation, MB_OK);
+  end
+  else
+  begin
+    Msg := 'Windows App SDK 运行时安装失败或需要重启。' + #13#10 + #13#10 +
+           '请确保网络连接正常，重新运行安装程序。' + #13#10 +
+           '如问题持续，可手动下载安装 Windows App SDK 运行时：' + #13#10 +
+           'https://aka.ms/windowsappsdk/1.7/4/windowsappruntimeinstall.exe';
+    MsgBox(Msg, mbError, MB_OK);
+  end;
+end;
+
+// 安装前检查：若已有旧版框架，提示用户
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  // 无特殊需求，直接返回空字符串表示允许安装
 end;

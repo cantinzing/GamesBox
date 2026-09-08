@@ -58,7 +58,7 @@ jobs:
         run: |
           msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=false /t:Rebuild /m
 
-      # 基础代码加固：用 UPX 对自包含 exe 加壳（压缩 + 简单反静态分析）。
+      # 基础代码加固：用 UPX 对便携 exe 加壳（压缩 + 简单反静态分析）。
       # 这是最低成本的防护；如需强防护（Anti-Debug / 虚拟化 / 反 dump），
       # 请自备 VMProtect 或 Themida 的许可证，在本步骤替换为对应命令行调用。
       - name: Protect binaries (UPX)
@@ -77,7 +77,7 @@ jobs:
         shell: powershell
         run: |
           # WinAppSDK 1.7 运行时安装包（随 setup.exe 一起分发，安装时静默安装框架依赖）
-          $url = "https://aka.ms/windowsappsdk/1.7/4/windowsappruntimeinstall.exe"
+          $url = "https://aka.ms/windowsappsdk/1.7/1.7.260224002/windowsappruntimeinstall-x64.exe"
           Invoke-WebRequest -Uri $url -OutFile "$env:GITHUB_WORKSPACE\installer\WinAppRuntimeInstall.exe" -ErrorAction Stop
 
       - name: Build installer (setup.exe)

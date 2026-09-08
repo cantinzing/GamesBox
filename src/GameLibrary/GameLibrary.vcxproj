@@ -43,8 +43,7 @@
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
     <!-- 框架依赖部署：运行时走 WindowsAppSDK 框架包 + VCLibs 框架包（MSIX 安装即带）。
-          不启用自包含：自包含 exe 在“已安装 WindowsAppRuntime 框架包”的机器上会与框架包
-          冲突（0xC0000602），而本机/目标机通常已装框架包，故统一用框架依赖模式。 -->
+          不启用自包含：自包含 unpackaged 有 DLL 版本冲突(c0000602)，仅 MSIX 可用自包含。 -->
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
