@@ -77,7 +77,7 @@ jobs:
         shell: powershell
         run: |
           # WinAppSDK 1.6 运行时安装包（随 setup.exe 一起分发，安装时静默安装框架依赖）
-          $url = "https://aka.ms/windowsappsdk/1.6/5/windowsappruntimeinstall.exe"
+          $url = "https://aka.ms/windowsappsdk/1.6/1.6.250602001/windowsappruntimeinstall-x64.exe"
           Invoke-WebRequest -Uri $url -OutFile "$env:GITHUB_WORKSPACE\installer\WinAppRuntimeInstall.exe" -ErrorAction Stop
 
       - name: Build installer (setup.exe)
