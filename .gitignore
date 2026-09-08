@@ -45,5 +45,6 @@ tools/gen_license_gui.exe
 
 
 
-# WindowsAppSDK runtime installer (67 MB, downloaded by CI)
+# WindowsAppSDK runtime installer (downloaded by CI)
 installer/WinAppRuntimeInstall.exe
+installer/WinAppSDK/
