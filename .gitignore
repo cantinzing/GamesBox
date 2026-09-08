@@ -34,5 +34,6 @@ out/
 # Test / log artifacts
 *.log
 
-# WindowsAppSDK runtime installer (67 MB, downloaded by CI)
+# WindowsAppSDK runtime installer (downloaded by CI)
 installer/WinAppRuntimeInstall.exe
+installer/WinAppSDK/

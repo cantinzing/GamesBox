@@ -73,12 +73,23 @@ jobs:
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
 
-      - name: Stage WinAppSDK runtime installer (for clean-machine setup)
+      - name: Stage WinAppSDK MSIX framework packages (offline install)
         shell: powershell
         run: |
-          # WinAppSDK 1.7 运行时安装包（随 setup.exe 一起分发，安装时静默安装框架依赖）
-          $url = "https://aka.ms/windowsappsdk/1.7/1.7.260224002/windowsappruntimeinstall-x64.exe"
-          Invoke-WebRequest -Uri $url -OutFile "$env:GITHUB_WORKSPACE\installer\WinAppRuntimeInstall.exe" -ErrorAction Stop
+          # 下载 WinAppSDK 1.7 NuGet 包，提取 x64 MSIX 框架文件供 setup.exe 离线打包
+          $nupkg = "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk/1.7.260224002/microsoft.windowsappsdk.1.7.260224002.nupkg"
+          $tmpNupkg = "$env:RUNNER_TEMP\winsdk.nupkg"
+          $tmpExtract = "$env:RUNNER_TEMP\winsdk"
+          Invoke-WebRequest -Uri $nupkg -OutFile $tmpNupkg -UseBasicParsing -ErrorAction Stop
+          $zipPath = "$env:RUNNER_TEMP\winsdk.zip"
+          Copy-Item $tmpNupkg $zipPath -Force
+          Expand-Archive -Path $zipPath -DestinationPath $tmpExtract -Force
+          $msixSrc = Join-Path $tmpExtract "tools\MSIX\win10-x64"
+          $msixDest = "$env:GITHUB_WORKSPACE\installer\WinAppSDK"
+          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
+          Copy-Item "$msixSrc\*.msix" $msixDest -Force
+          Write-Host "Staged MSIX files:"
+          Get-ChildItem $msixDest -Filter "*.msix" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1)) MB)" }
 
       - name: Build installer (setup.exe)
         shell: powershell
