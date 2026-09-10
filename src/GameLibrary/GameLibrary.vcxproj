@@ -163,7 +163,13 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- user32.lib 必须显式列出。
+           本工程把模板默认的库列表换成了「只有 shell32.lib」；而 kernel32 是靠
+           CRT 目标文件里的 /DEFAULTLIB 自动进来的，user32 不在其中。
+           App.xaml.cpp 用 MessageBoxW 把启动失败弹出来，属于 user32 ——
+           不加这一项就会 LNK2019: unresolved external symbol __imp_MessageBoxW
+           （CI 已经真实踩过一次）。 -->
+      <AdditionalDependencies>shell32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
