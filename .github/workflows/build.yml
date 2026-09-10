@@ -20,96 +20,277 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      # ==========================================================================
+      # 注意（踩过）：run: 块内【禁止出现任何非 ASCII 字符】（含中文注释/报错文案）。
+      #   GitHub Actions 把 run: 块写成临时 .ps1 时不写 BOM，而 Windows
+      #   PowerShell 5.1 在没有 BOM 时按 ANSI 代码页解析文件 —— 中文会被读成乱码，
+      #   轻则输出乱码，重则字符串引号/花括号配对失败，脚本在【解析阶段】直接崩，
+      #   命令一行都不会执行（曾因此让整个 CI 红在第一步）。
+      #   所以：run: 块一律纯英文 ASCII；中文只写在 YAML 注释里（注释不进入脚本）。
+      # ==========================================================================
+
       - name: Bootstrap vcpkg
         shell: powershell
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw "git clone vcpkg failed, exit code $LASTEXITCODE" }
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap-vcpkg failed, exit code $LASTEXITCODE" }
 
       - name: Restore vcpkg dependencies
         shell: powershell
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed, exit code $LASTEXITCODE" }
 
+      # ⚠️ 重要陷阱：这里的构建器是原生(exe) 命令，而 PowerShell 默认【不会】因为原生
+      #    进程返回非零退出码就把这一步判为失败。历史上正是这个原因，让"便携构建失败"
+      #    被悄悄吞掉：CI 继续拿上一次 MSIX 构建残留的 exe（AppxPackage=true，
+      #    不链接引导库、也不拷贝 Bootstrap.dll）去加壳、去打包，最终产出一个
+      #    “CI 全绿、下载后双击无反应”的包。
+      #    所以每一次构建调用之后都必须显式检查 $LASTEXITCODE，否则等于没有断言。
       - name: Restore NuGet packages
         shell: powershell
         run: |
           msbuild GameLibrary.sln /t:Restore /p:Configuration=Release /p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw "NuGet restore failed, exit code $LASTEXITCODE" }
 
-      # 1) Sideload MSIX (self-signed; for manual sideload install)
-      #    main 分支为 WinAppSDK 1.6 框架依赖模式：自包含(true)在 1.6 下会导致
-      #    MddBootstrapInitialize2/MddBootstrapShutdown 链接失败，故保持框架依赖。
-      #    （崩溃修复已在源码中；目标机器安装过 VS/WinAppSDK 运行库即可正常启动）
+      # ============================================================================
+      # 部署模式（务必区分，且每一步都显式传参，不依赖 vcxproj 默认值，保证 CI 行为确定）
+      #
+      #   便携版 / setup.exe  ->  自包含  (WindowsAppSDKSelfContained=true)
+      #       运行时随应用一起分发，目标机器【无需安装任何运行时】，解压/安装即可运行。
+      #
+      #   两个 MSIX 产物        ->  框架依赖 (WindowsAppSDKSelfContained=false)
+      #       走 WindowsAppSDK 框架包，体积小。不要与自包含混用同一份输出。
+      #
+      # 三个构建共用同一个 OutDir，因此顺序至关重要：
+      #   自包含构建排在最后，保证 zip / setup.exe 拿到的是自包含产物。
+      # ============================================================================
+
+      # 1) Sideload MSIX (self-signed; for manual sideload install) —— 框架依赖
       - name: Build sideload MSIX
         shell: powershell
         run: |
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          if ($LASTEXITCODE -ne 0) { throw "Sideload MSIX build failed, exit code $LASTEXITCODE" }
 
-      # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it)
+      # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it) —— 框架依赖
       - name: Build store bundle
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained=false /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+          if ($LASTEXITCODE -ne 0) { throw "Store bundle build failed, exit code $LASTEXITCODE" }
 
-      # 3) 便携版：包含 WinAppSDK 框架包 + 安装脚本，首次运行需管理员权限安装框架
-      - name: Build portable (with bundled runtime)
+      # 3) 便携版 / setup.exe 的来源：【自包含】构建。
+      #    必须排在两个 MSIX 构建【之后】—— 三者共用同一个 OutDir，
+      #    自包含构建(/t:Rebuild)最后执行，保证被打包的就是自包含产物。
+      - name: Build portable (self-contained)
         shell: powershell
         run: |
-          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=false /t:Rebuild /m
+          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=true /t:Rebuild /m
+          if ($LASTEXITCODE -ne 0) { throw "Portable (self-contained) build failed, exit code $LASTEXITCODE" }
 
-      # 基础代码加固：用 UPX 对便携 exe 加壳（压缩 + 简单反静态分析）。
-      # 这是最低成本的防护；如需强防护（Anti-Debug / 虚拟化 / 反 dump），
-      # 请自备 VMProtect 或 Themida 的许可证，在本步骤替换为对应命令行调用。
+      # 基础代码加固：对便携 exe 用 UPX 加壳（压缩 + 简单反静态分析）。
+      # main 分支是商业版本，保留这层保护；opensource 分支已移除。
+      #
+      # 曾经的误判：本项目历史上把「双击没反应」归咎于 UPX，并在 opensource 的校验里
+      # 把加壳当成致命错误。这是错的 —— 实测（UPX 5.2.1 --best --lzma，自包含 +
+      # 静态导入 Microsoft.WindowsAppRuntime.dll 的 exe）加壳后仍能正常启动，
+      # 窗口正常出现；UPX 会保留 PE 导入目录，所以
+      # "WindowsAppRuntime_EnsureIsLoaded" 这个导入符号在加壳后依然可被检出。
+      # 真正的死因是产物里缺 resources.pri（见下）。
       - name: Protect binaries (UPX)
         shell: powershell
         run: |
-          choco install upx -y --no-progress
+          if (-not (Get-Command upx -ErrorAction SilentlyContinue)) {
+            choco install upx -y --no-progress --allow-downgrade
+          }
           $exe = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe"
-          if (Test-Path $exe) { upx --best --lzma "$exe" } else { Write-Host "GameLibrary.exe not found, skipping UPX" }
+          if (-not (Test-Path $exe)) { throw "GameLibrary.exe not found, cannot apply UPX: $exe" }
+          upx --best --lzma "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "UPX packing failed, exit code $LASTEXITCODE" }
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
+          if ($ascii -notmatch 'UPX!') { throw "UPX ran but the exe carries no UPX marker - the protection step did not take effect" }
+          Write-Host "UPX applied. Import symbol still detectable, which the payload verification below asserts."
 
-      - name: Zip portable (with WinAppSDK runtime)
+      # 发布前自检：把「双击没反应」这类问题拦在 CI 里，而不是让用户下载后才踩坑。
+      # 本步骤【模式感知】：自包含与框架依赖所需的文件不同，不能一刀切。
+      - name: Verify portable payload
         shell: powershell
         run: |
-          $portableDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $buildDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $exe      = Join-Path $buildDir "GameLibrary.exe"
+          $errors   = @()
+          $warnings = @()
 
-          # 下载 WinAppSDK 1.6 NuGet 包，提取 x64 MSIX 框架文件
-          $nupkg = "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk/1.6.250602001/microsoft.windowsappsdk.1.6.250602001.nupkg"
-          $tmpNupkg = "$env:RUNNER_TEMP\winsdk.nupkg"
-          $tmpExtract = "$env:RUNNER_TEMP\winsdk"
-          Invoke-WebRequest -Uri $nupkg -OutFile $tmpNupkg -UseBasicParsing -ErrorAction Stop
-          $zipPath = "$env:RUNNER_TEMP\winsdk.zip"
-          Copy-Item $tmpNupkg $zipPath -Force
-          Expand-Archive -Path $zipPath -DestinationPath $tmpExtract -Force
-          $msixSrc = Join-Path $tmpExtract "tools\MSIX\win10-x64"
+          Write-Host "Checking build dir: $buildDir"
+          if (-not (Test-Path $buildDir)) {
+            throw "Build output directory does not exist: $buildDir (OutDir probably resolved elsewhere; packing would pick up stale files)"
+          }
+          Get-ChildItem $buildDir | Select-Object Name, Length | Format-Table -AutoSize | Out-String | Write-Host
 
-          # 复制 MSIX 框架文件到便携目录
-          $msixDest = Join-Path $portableDir "WinAppSDK"
-          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
-          Copy-Item "$msixSrc\*.msix" $msixDest -Force
-          Write-Host "Staged MSIX files:"
-          Get-ChildItem $msixDest -Filter "*.msix" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1)) MB)" }
+          if (-not (Test-Path $exe)) {
+            $errors += "GameLibrary.exe is missing"
+          } else {
+            $text = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
 
-          # 复制安装脚本
-          Copy-Item "$env:GITHUB_WORKSPACE\installer\install-runtime.bat" $portableDir -Force
+            # main intentionally ships UPX-packed executables (anti static analysis), so
+            # this is NOT an error here. Measured with UPX 5.2.1 --best --lzma on the
+            # self-contained payload: the app still starts normally, and UPX preserves the
+            # PE import directory, so the WindowsAppRuntime_EnsureIsLoaded assertion below
+            # still holds. The historical "double-click does nothing" bug was the missing
+            # resources.pri, not the packing.
+            if ($text -match 'UPX!') {
+              Write-Host "GameLibrary.exe is UPX-packed (expected on main; PE import table preserved)."
+            } else {
+              $warnings += "GameLibrary.exe is not UPX-packed - the 'Protect binaries (UPX)' step did not take effect"
+            }
 
-          # 打包 zip
+            # Mode detection: a self-contained build ships the WinUI runtime DLLs.
+            $isSelfContained = Test-Path (Join-Path $buildDir 'Microsoft.ui.xaml.dll')
+
+            if ($isSelfContained) {
+              Write-Host "Detected SELF-CONTAINED payload: verifying bundled runtime."
+              foreach ($f in @(
+                  'Microsoft.ui.xaml.dll',
+                  'Microsoft.WindowsAppRuntime.dll',
+                  'Microsoft.UI.Xaml.Controls.dll',
+                  'Microsoft.Windows.ApplicationModel.Resources.dll')) {
+                if (-not (Test-Path (Join-Path $buildDir $f))) { $errors += "[self-contained] missing runtime DLL: $f" }
+              }
+              if (-not (Get-ChildItem $buildDir -Filter '*.pri' -Recurse -ErrorAction SilentlyContinue)) {
+                $errors += "[self-contained] no bundled .pri resource files (WinUI control styles depend on them)"
+              }
+
+              # resources.pri is MANDATORY for an unpackaged WinUI 3 app, and it is exactly the
+              # one file the WindowsAppSDK self-contained targets deliberately do not bring
+              # along: Microsoft.WindowsAppSDK.SelfContained.targets deletes the merged
+              # resources.pri it unpacks from the runtime MSIX ("each required pri will be
+              # copied over separately"), assuming the app's own build produces a resources.pri
+              # that merges those framework PRIs.
+              #
+              # This project used to override _GenerateProjectPriFile to a no-op, so that file
+              # never existed. The app then died silently: XAML could not resolve
+              # ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml, InitializeComponent
+              # threw, and the UnhandledException handler's Handled(true) swallowed it -
+              # no window, no dialog, nothing in the event log. That is "double-click does
+              # nothing", and it happens on Windows 11 exactly as on Windows 10.
+              #
+              # Assert on the string "themeresources", not merely on the file existing: that
+              # proves the PRI really merged the WinUI framework XAML resources, which is the
+              # entire reason the file must be there.
+              $pri = Join-Path $buildDir 'resources.pri'
+              if (-not (Test-Path $pri)) {
+                $errors += "[self-contained] resources.pri is missing from the payload: WinUI cannot resolve its themeresources, so the app starts and immediately dies with no window and no error"
+              } else {
+                $priLen = (Get-Item $pri).Length
+                if ($priLen -lt 100KB) {
+                  $errors += "[self-contained] resources.pri is only $priLen bytes - it does not contain the merged WinUI framework resources"
+                }
+                $priText = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($pri))
+                if ($priText -notmatch 'themeresources') {
+                  $errors += "[self-contained] resources.pri does not reference themeresources (the root resource dictionary of every WinUI control style), so the framework PRIs were not merged in"
+                }
+              }
+              # WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false in the vcxproj
+              # makes the exe statically import Microsoft.WindowsAppRuntime.dll. That is what
+              # turns "runtime cannot be loaded" from a silent exit() (the classic
+              # double-click-does-nothing) into a Windows dialog naming the missing module.
+              #
+              # Assert on the IMPORTED FUNCTION NAME, not on the DLL name: the DLL name also
+              # appears inside the exe's embedded WinRT registration manifest, so matching on
+              # it alone would pass even with the import gone (false confidence).
+              if ($text -notmatch 'WindowsAppRuntime_EnsureIsLoaded') {
+                $errors += "[self-contained] GameLibrary.exe carries no WindowsAppRuntime_EnsureIsLoaded reference, so the static import of Microsoft.WindowsAppRuntime.dll is missing (WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false is not taking effect) and a broken runtime would fail silently again"
+              }
+              if ($text -match 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
+                $warnings += "Self-contained payload imports Microsoft.WindowsAppRuntime.Bootstrap.dll (unexpected in self-contained mode)"
+              }
+            } else {
+              Write-Host "Detected FRAMEWORK-DEPENDENT payload: verifying bootstrap chain."
+              if ($text -notmatch 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
+                $errors += "Framework-dependent payload does not import Microsoft.WindowsAppRuntime.Bootstrap.dll - an unpackaged app cannot initialize WindowsAppSDK (classic cause of 'double-click does nothing')"
+              }
+              if (-not (Test-Path (Join-Path $buildDir 'Microsoft.WindowsAppRuntime.Bootstrap.dll'))) {
+                $errors += "[framework-dependent] missing Microsoft.WindowsAppRuntime.Bootstrap.dll"
+              }
+            }
+          }
+
+          # Required in both modes: app-private dependencies.
+          foreach ($f in @('sqlite3.dll','vcruntime140.dll','msvcp140.dll')) {
+            if (-not (Test-Path (Join-Path $buildDir $f))) { $errors += "missing $f" }
+          }
+
+          # resources.pri is asserted above (self-contained mode). Do not downgrade that check
+          # to a warning: a payload without it looks perfectly healthy - it just never shows
+          # a window.
+
+          # Debug junk that must not ship.
+          $junk = Get-ChildItem $buildDir -Include *.pdb, *.ilk -Recurse -ErrorAction SilentlyContinue
+          if ($junk) {
+            $mb = [math]::Round(($junk | Measure-Object Length -Sum).Sum / 1MB, 1)
+            $warnings += "Build dir contains $($junk.Count) debug files ($mb MB total); the packaging step excludes them"
+          }
+
+          $warnings | ForEach-Object { Write-Host "::warning::$_" }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$_" }
+            throw "Portable payload verification failed; packaging and release are blocked"
+          }
+          Write-Host "Verification passed: payload is complete (checked per self-contained / framework-dependent mode)."
+
+      # 打包便携版 zip。
+      # 自包含产物已内置 WindowsAppSDK 运行时，因此【不再】随包附带 MSIX 框架包或
+      # 运行时安装脚本 —— 解压即可运行，无需管理员权限。
+      - name: Zip portable (self-contained)
+        shell: powershell
+        run: |
+          $buildDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $portableDir = "$env:RUNNER_TEMP\GameLibrary-portable"
+          if (-not (Test-Path "$buildDir\GameLibrary.exe")) { throw "GameLibrary.exe was not produced: $buildDir" }
+
+          Remove-Item $portableDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
+          Copy-Item "$buildDir\*" $portableDir -Recurse -Force
+          Get-ChildItem $portableDir -Recurse -File -Include *.pdb, *.ilk, *.exp, *.lib | Remove-Item -Force
+
+          # Ship the self-diagnostic harness inside the zip. When the app refuses to
+          # start on a target machine, the user runs Diagnose.bat and sends back
+          # Diagnose-Report.txt - no build, no debugger, no guesswork.
+          $diag = @("tools\Diagnose.bat", "tools\Diagnose-GameLibrary.ps1")
+          foreach ($f in $diag) {
+            $src = Join-Path $env:GITHUB_WORKSPACE $f
+            if (-not (Test-Path $src)) { throw "diagnostic file missing from the repo: $f" }
+            Copy-Item $src $portableDir -Force
+          }
+
+          # Bilingual usage note ships with the zip. The text lives in a real UTF-8 file
+          # in the repo, and is re-encoded to UTF-8-with-BOM here so Windows Notepad
+          # always renders the Chinese correctly.
+          # Do NOT build this text from a PowerShell string literal: non-ASCII in an
+          # inline run: block breaks under Windows PowerShell 5.1 (see note at top).
+          $readmeSrc  = "$env:GITHUB_WORKSPACE\installer\README-portable.txt"
+          $readmeText = [System.IO.File]::ReadAllText($readmeSrc, [System.Text.Encoding]::UTF8)
+          [System.IO.File]::WriteAllText("$portableDir\README.txt", $readmeText, (New-Object System.Text.UTF8Encoding($true)))
+
           Compress-Archive -Path "$portableDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+          Write-Host "Portable payload contents:"
+          Get-ChildItem $portableDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
+      # setup.exe 直接打包同一份【自包含】产物，因此安装后即可运行、无需再装运行时。
       - name: Build installer (setup.exe)
         shell: powershell
         run: |
-          # 复制 MSIX 框架文件到 installer 目录（供 Inno Setup 打包）
-          $msixSrc = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\WinAppSDK"
-          $msixDest = "$env:GITHUB_WORKSPACE\installer\WinAppSDK"
-          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
-          Copy-Item "$msixSrc\*.msix" $msixDest -Force
-
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") -and -not (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe")) {
             choco install innosetup -y --no-progress --allow-downgrade
           }
           $isccDir = @("C:\Program Files (x86)\Inno Setup 6", "C:\Program Files\Inno Setup 6") | Where-Object { Test-Path "$_\ISCC.exe" } | Select-Object -First 1
           if (-not $isccDir) { throw "ISCC.exe not found after install" }
           & "$isccDir\ISCC.exe" "installer\GameLibrary.iss" /DMySourceDir="$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="$env:GITHUB_WORKSPACE\installer-output" /DMyAppVersion="1.0.0.0"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup packaging failed, exit code $LASTEXITCODE" }
 
       - name: Upload setup artifact
         uses: actions/upload-artifact@v4

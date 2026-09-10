@@ -117,7 +117,7 @@ msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Debug /p:Platform=x
 
 ### 5. 本地开发注意事项
 
-- **自包含（Release）exe 不要在本机直接调试**：它与已注册的 WindowsAppRuntime 框架包同机时可能崩溃（`0xC0000602`，WinUI 3 自包含已知限制）。本地开发与调试一律用 Debug 版本。
+- **自包含（Release）exe 现在可以在本机直接运行了**：历史上自包含 Release 版在已注册 WindowsAppRuntime 框架包的机器上会崩溃（`0xC0000602`），原因是 `App.xaml.cpp` 里手动调用了 `Bootstrap::Initialize()`，在自包含模式下误走了「框架依赖」的引导路径。该手动调用已移除 —— 改由 WindowsAppSDK 的自动初始化器按部署模式自动选择正确路径（自包含 → UndockedRegFreeWinRT，框架依赖 → MddBootstrap）。本地开发调试仍建议用 Debug 版本。
 - 设置中的凭据（IGDB / SteamGridDB）保存在 Windows 凭据管理器；数据库在 `%LOCALAPPDATA%\GameLibrary\games.db`。调试时可删除该文件以重置整个游戏库。
 - 若构建报找不到 Windows App SDK 相关头文件 / 库，确认 VS 已安装“Windows 应用 SDK”工作负载，且 `VCPKG_ROOT` 已正确设置。
 
@@ -125,13 +125,15 @@ msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Debug /p:Platform=x
 
 ## 发布（Release，x64，自包含）
 
-Release 启用 `WindowsAppSDKSelfContained`，把 Windows App SDK 运行时 DLL 与 exe 一同输出，因此目标机器无需单独安装运行时，兼容 Windows 10 / 11：
+Release **默认即为自包含**（`WindowsAppSDKSelfContained` 默认为 `true`），把 Windows App SDK 运行时 DLL 与 exe 一同输出，因此目标机器无需单独安装运行时，兼容 Windows 10 / 11：
 
 ```powershell
 msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /t:Rebuild
 ```
 
 自包含产物位于 `src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe`（运行时已同目录打包），直接分发该目录即可运行。
+
+> 构建会自动执行 `makepri`，在输出目录生成 `resources.pri`（把 WinUI 框架的 `Microsoft.UI.pri` / `Microsoft.UI.Xaml.Controls.pri` 合并进应用自己的资源索引）。**这个文件是必需的** —— 未打包的 WinUI 3 应用靠它解析 `ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml`（所有控件样式的根资源字典）。缺了它，应用会在启动时抛异常并被静默吞掉，表现为「双击没反应」。配置见 `src\GameLibrary\priconfig.xml`。
 
 ---
 
@@ -177,15 +179,15 @@ msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj `
 a. 信任证书（仅首次需要）— 二选一：
 
    - 双击 `GameLibrary_TemporaryKey.pfx` → 安装 → 存储位置选择“受信任的人”；或
-   - 以管理员身份运行 PowerShell：
+   - 以**当前用户身份**运行 PowerShell（无需管理员提权）：
 
      ```powershell
-     Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+     Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
      ```
 
    - 也可开启 Windows“设置 → 更新和安全 → 开发者选项 → 旁加载”后直接双击 `.msix`。
 
-b. 安装应用 — 以管理员身份运行脚本，或：
+b. 安装应用 — 运行脚本（无需管理员），或：
 
    ```powershell
    Add-AppxPackage -Path "AppPackages\GameLibrary_<版本>_x64_<通道>.msix"
@@ -206,9 +208,10 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 推送 `main` 分支或手动触发 `workflow_dispatch` 后，CI 会在 `windows-2022` 上完成还原与构建，并产出四个 Artifact（在 Actions 页面对应任务的 Artifacts 中下载）：
 
 - **GameLibrary-portable-win-x64**（自包含压缩包）
-  - 解压后直接双击 `GameLibrary.exe` 即可运行，无需安装运行时或证书。适用于干净的 Windows 10 / 11；若在已注册 WindowsAppRuntime 框架包的机器上运行，可能触发 `0xC0000602` 冲突（见本地开发注意事项，属已知限制）。
+  - 解压后直接双击 `GameLibrary.exe` 即可运行，**无需安装运行时、无需管理员权限**。包内已内置 Windows App SDK 运行时，并随包附带 `resources.pri`（WinUI 控件样式的资源索引，缺它会导致「双击没反应」）。适用于干净的 Windows 10 / 11。
+  - 包内还附带 `Diagnose.bat`：万一在某台机器上打不开，双击它会生成 `Diagnose-Report.txt`（系统版本、产物新旧、进程退出码、逐个 DLL 的加载结果、应用事件日志、`resources.pri` 体检、启动日志），把这个文件发出来即可定位。
 - **GameLibrary-setup-win-x64**（传统安装向导 `setup.exe`）
-  - 双击运行安装向导，默认安装到 `C:\Program Files\GameLibrary`，并在开始菜单 / 桌面创建快捷方式（安装时会请求管理员提权）。其安装内容与自包含压缩包一致，运行时同样受 `0xC0000602` 限制影响（干净目标机正常）。
+  - 双击运行安装向导，默认安装到 `%LOCALAPPDATA%\Programs\GameLibrary`（当前用户目录，**全程不触发 UAC 提权**），并在开始菜单 / 桌面创建当前用户级快捷方式。安装内容与自包含压缩包一致，安装后即可运行。
 - **GameLibrary-MSIX-x64**（侧载 MSIX）
   - 见上方“MSIX 侧载”流程。下载的压缩包解压后即为该流程里的 `AppPackages` 内容（含 `*.msix` 与 `Add-AppPackage.ps1`）。用于信任的签名证书 `GameLibrary_TemporaryKey.pfx`（空密码）**不在产物内**，需从仓库 `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` 获取并安装到“受信任的人”后再安装。
 - **GameLibrary-store-msixbundle**（商店提交包，未签名的 `.msixbundle`）

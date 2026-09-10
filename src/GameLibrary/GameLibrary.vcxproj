@@ -38,13 +38,70 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumWindowsTargetPlatformVersion>10.0</MinimumWindowsTargetPlatformVersion>
     <AppContainerApplication>false</AppContainerApplication>
-    <AppxPackage Condition="'$(AppxPackage)'==''">true</AppxPackage>
-    <WindowsPackageType Condition="'$(WindowsPackageType)'==''">None</WindowsPackageType>
+    <AppxPackage>false</AppxPackage>
+    <WindowsPackageType>None</WindowsPackageType>
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
-    <!-- For packaged builds (AppxPackage=true), disable bootstrap auto-init since the framework package handles initialization -->
-    <WindowsAppSdkBootstrapInitialize Condition="'$(AppxPackage)'=='true'">false</WindowsAppSdkBootstrapInitialize>
+
+    <!-- =====================================================================
+         未打包(unpackaged) WinUI 3 的部署开关 —— 必须显式写死，不能依赖默认值。
+
+         原因：C++ 工程不会自动设置 $(OutputType)，而 WindowsAppSDK 的 targets
+         用 $(OutputType) 判断「这是应用程序还是类库」。一旦为空就会走类库分支：
+
+           · Microsoft.WindowsAppSDK.BootstrapCommon.targets
+             不会把 WindowsAppSdkBootstrapInitialize 置为 true
+             → MddBootstrapAutoInitializer.cpp 不参与编译
+             → 进程从不调用 MddBootstrapInitialize
+             → 未打包应用无法绑定到 WindowsAppSDK 框架包，
+               Microsoft.ui.xaml.dll 加载失败，双击后静默退出（没有任何提示）。
+
+           · Microsoft.Build.Msix.Pri.targets 里 GenerateLibraryLayout 默认为 true
+             → 不生成 resources.pri。
+
+         另外 Microsoft.WindowsAppSDK.BootstrapCommon.targets 只在
+         WindowsPackageType=None 且非自包含时才置位，所以这里逐项显式声明。
+         ===================================================================== -->
+    <OutputType>WinExe</OutputType>
+
+    <!-- 部署模式默认「自包含」：WindowsAppSDK 运行时随应用一起分发，目标机器
+         【无需安装任何运行时】，解压/双击或安装后即可运行（“解压即用”）。
+         代价仅是输出目录大几十 MB。
+         需要「框架依赖」（体积小、依赖目标机已装运行时）的产物时，例如 MSIX/Store，
+         在命令行显式传 /p:WindowsAppSDKSelfContained=false 覆盖。 -->
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)'==''">true</WindowsAppSDKSelfContained>
+
+    <!-- 下面两个初始化开关互斥，由 WindowsAppSDK 的 AutoInitializer 在编译期读取：
+         WindowsAppRuntimeAutoInitializer.cpp（始终参与编译）里的全局静态对象会按需
+         自动执行对应初始化。用户代码【不要】再手动调用任何 Initialize()。 -->
+
+    <!-- 框架依赖（未打包）：走 MddBootstrapInitialize，绑定已安装的 WindowsAppSDK 框架包 -->
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)'!='true' and '$(AppxPackage)'!='true'">true</WindowsAppSdkBootstrapInitialize>
+    <!-- 自包含：走 UndockedRegFreeWinRT，加载随应用分发的本地运行时（免注册激活） -->
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize Condition="'$(WindowsAppSDKSelfContained)'=='true'">true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+
+    <!-- =====================================================================
+         让「运行时加载失败」变成可见的错误，而不是静默退出。
+
+         默认情况下 WindowsAppSDK 会定义
+           MICROSOFT_WINDOWSAPPSDK_UNDOCKEDREGFREEWINRT_AUTO_INITIALIZE_LOADLIBRARY
+         于是 UndockedRegFreeWinRT-AutoInitializer.cpp 在【静态初始化期】
+         （wWinMain 之前）执行：
+
+             static HMODULE dll{ LoadLibraryExW(L"Microsoft.WindowsAppRuntime.dll", ...) };
+             if (!dll) { DebugBreak(); exit(HRESULT_FROM_WIN32(GetLastError())); }
+
+         一旦这个 LoadLibrary 失败（随包运行时不全、依赖 DLL 在目标系统上缺失等），
+         进程会【一声不响】地退出：没有窗口、没有报错、没有事件日志，
+         用户看到的只有「双击没反应」，而且日志里连一行都留不下。
+
+         关掉这个开关后，改用隐式导入（Microsoft.WindowsAppRuntime.lib 本来就在
+         链接依赖里，见 WindowsAppSDK-Nuget-Native.C.props）：
+         加载失败会由 Windows 加载器接管，弹出「找不到 XXX.dll」的具名提示，
+         直接把缺失的模块名告诉我们。CI 的便携包校验会断言 exe 确实导入了
+         Microsoft.WindowsAppRuntime.dll，防止这个开关被悄悄改回去。
+         ===================================================================== -->
+    <WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary Condition="'$(WindowsAppSDKSelfContained)'=='true'">false</WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
     <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
@@ -60,15 +117,29 @@
     <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
     <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
   </PropertyGroup>
-  <!-- Output paths: unpackaged WinUI (ApplicationType=Windows Store + AppxPackage=false)
-       does not get OutDir/IntDir/OutputPath from the Cpp defaults, so define them here.
-       Layout mirrors the existing build/ convention (build/bin and build/obj). -->
-  <PropertyGroup>
-    <OutDir Condition="'$(OutDir)'==''">$(ProjectDir)..\..\build\bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir Condition="'$(IntDir)'==''">$(ProjectDir)..\..\build\obj\$(Platform)\$(Configuration)\</IntDir>
-    <OutputPath Condition="'$(OutputPath)'==''">$(OutDir)</OutputPath>
-  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- Output paths —— 放在 Microsoft.Cpp.props 之后，保证不会被覆盖。
+       （MSBuild 属性后赋值者胜；放前面的话会被下面这条默认值顶掉。）
+
+       机制：本工程 ApplicationType=Windows Store，所以 Microsoft.Cpp.props 链路里
+       会导入 Microsoft.Cpp.AppContainerApplication.props，其中
+         <OutDir Condition="'$(OutDirWasSpecified)'!='true'">
+             $(SolutionDir)$(Platform)\$(Configuration)\$(MSBuildProjectName)\
+       而 SolutionDir 在未显式给出时会回落到 $(ProjectDir)（见 Microsoft.Cpp.Default.props），
+       于是 CI 里直接编译 vcxproj 时它算出来是
+         <projdir>\x64\Release\GameLibrary\
+       —— 与下面这行一致。这里显式钉死的目的不是“修正路径”，而是把
+       VS 解决方案构建 与 CI 命令行构建 收敛到同一个目录，即
+       GameLibrary.Package.wapproj 的 AppxPackagePayload 约定的
+         ..\GameLibrary\$(Platform)\$(Configuration)\GameLibrary\
+       避免“打包的”和“刚编译的”是两批文件。（CI 的 Verify portable payload
+       步骤会校验该目录确实存在且 exe 合格，作为兜底。） -->
+  <PropertyGroup>
+    <OutDir>$(MSBuildProjectDirectory)\$(Platform)\$(Configuration)\GameLibrary\</OutDir>
+    <IntDir>$(MSBuildProjectDirectory)\obj\$(Platform)\$(Configuration)\</IntDir>
+    <OutputPath>$(OutDir)</OutputPath>
+  </PropertyGroup>
   <PropertyGroup>
     <_NuGetTargetFallbackMoniker>$(_NuGetTargetFallbackMoniker);native,Version=v0.0</_NuGetTargetFallbackMoniker>
   </PropertyGroup>
@@ -92,8 +163,13 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions Condition="'$(Configuration)'!='Debug'">/OPT:NOREF /OPT:NOICF %(AdditionalOptions)</AdditionalOptions>
+      <!-- user32.lib 必须显式列出。
+           本工程把模板默认的库列表换成了「只有 shell32.lib」；而 kernel32 是靠
+           CRT 目标文件里的 /DEFAULTLIB 自动进来的，user32 不在其中。
+           App.xaml.cpp 用 MessageBoxW 把启动失败弹出来，属于 user32 ——
+           不加这一项就会 LNK2019: unresolved external symbol __imp_MessageBoxW
+           （CI 已经真实踩过一次）。 -->
+      <AdditionalDependencies>shell32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -154,6 +230,7 @@
     <ClInclude Include="Data\Repositories.h" />
     <ClInclude Include="Data\AppSettings.h" />
     <ClInclude Include="Data\CredentialStore.h" />
+    <!-- main 分支专有：激活/授权体系（opensource 分支已移除，同步时勿丢） -->
     <ClInclude Include="Licensing\LicenseManager.h" />
     <ClInclude Include="Licensing\LicenseCrypto.h" />
     <ClInclude Include="Services\AppServices.h" />                                                                     
@@ -207,6 +284,7 @@
     <ClCompile Include="Data\Repositories.cpp" />
     <ClCompile Include="Data\AppSettings.cpp" />
     <ClCompile Include="Data\CredentialStore.cpp" />
+    <!-- main 分支专有：激活/授权体系（opensource 分支已移除，同步时勿丢） -->
     <ClCompile Include="Licensing\LicenseManager.cpp" />
     <ClCompile Include="Licensing\LicenseCrypto.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -224,7 +302,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250602001" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" Condition="'$(VcpkgRoot)' != '' and Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets')" />
@@ -271,13 +349,13 @@
       <AdditionalIncludeDirectories>$(IntDir)Views\;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
-  <Target Name="CompileXamlGeneratedSourcesStandalone" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" BeforeTargets="ClCompile" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != ''">
+  <Target Name="CompileXamlGeneratedSourcesStandalone" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" BeforeTargets="ClCompile" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
     <ItemGroup>
       <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.g.cpp')" />
       <ClCompile Include="$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp" Condition="Exists('$(XamlGeneratedOutputPath)XamlTypeInfo.Impl.g.cpp')" />
     </ItemGroup>
   </Target>
-  <Target Name="AddWinUIWinmdReferencesForStandaloneBuild" BeforeTargets="MarkupCompilePass1;MarkupCompilePass2" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != ''">
+  <Target Name="AddWinUIWinmdReferencesForStandaloneBuild" BeforeTargets="MarkupCompilePass1;MarkupCompilePass2" Condition="'$(PkgMicrosoft_WindowsAppSDK)' != '' and '$(ApplicationType)' != 'Windows Store'">
     <PropertyGroup>
       <_WinUIMarkupUapTargetVersion Condition="'$(TargetPlatformVersion)' == '' OR '$(TargetPlatformVersion)' &lt; '10.0.18362.0'">uap10.0.17763</_WinUIMarkupUapTargetVersion>
       <_WinUIMarkupUapTargetVersion Condition="'$(_WinUIMarkupUapTargetVersion)' == ''">uap10.0.18362</_WinUIMarkupUapTargetVersion>
@@ -308,4 +386,73 @@
     <Copy SourceFiles="@(_VCRuntimeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- =======================================================================
+       未打包(自包含)产物必须自带 resources.pri —— 少了它应用就是「双击没反应」。
+
+       【为什么必须有】
+       Microsoft.WindowsAppSDK.SelfContained.targets 在解出运行时 MSIX 之后
+       【主动删掉】其中的合并 resources.pri。该 targets 原文里的英文说明是：
+         "We do not need to copy over the merged resources.pri from the msix,
+          each required pri will be copied over separately."
+       对应语句就是删掉 MsixContent 目录下 resources.pri 的那个 Delete 任务。
+
+       它只把 Microsoft.UI.pri / Microsoft.UI.Xaml.Controls.pri 作为独立 pri
+       复制到输出目录，并假定【应用自己的构建会生成一份 resources.pri 把这些框架
+       pri 合并进去】。
+
+       而本工程历史上有 `_GenerateProjectPriFile` 空操作覆写 +
+       AppxGeneratePriEnabled=false + IncludeProjectPriFile=false，那份
+       resources.pri 从来没有被生成过。后果（与操作系统版本无关，Win10/Win11 一样）：
+
+         · WinUI 解析不到 ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml
+           —— 那是所有控件样式的根资源字典；
+         · App::InitializeComponent 抛异常，被 App::UnhandledException 里的
+           e.Handled(true) 吞掉；
+         · 于是：没有窗口、没有报错、事件日志空白 —— 用户只看到「双击没反应」。
+
+       【做法】按官方《Localize strings in your UI / MRT Core》对未打包应用的指引手工生成：
+           makepri new /pr . /cf priconfig.xml /of <OutDir>\resources.pri
+       配置见同目录 priconfig.xml：不含 <packaging> 段（保证合并成单一 pri），
+       保留 <indexer-config type="PRI"/>（用于合并框架 pri）。
+       不传 /IndexName —— 无索引名 + 无包清单时根命名空间自动为 Application，
+       这正是未打包运行时需要的。
+
+       【为什么只跑自包含】MSIX(框架依赖)由 .wapproj 产出它自己的 resources.pri，
+       两者共用同一个 OutDir，都写会打架。
+
+       【为什么用 WorkingDirectory + /pr "."】
+       $(OutDir) 以反斜杠结尾且路径可能含空格（"...\Default Project\..."）。
+       直接拼 /pr "$(OutDir)" 会得到 "...\GameLibrary\"，命令行解析会把结尾的
+       \" 当成转义引号，路径就断了。改用 cwd=OutDir + /pr "." 彻底绕开这个坑，
+       也不依赖任何未经验证的 MSBuild 属性函数。
+       ======================================================================= -->
+  <PropertyGroup Condition="'$(WindowsAppSDKSelfContained)' == 'true'">
+    <_GLPriConfigFile>$(MSBuildProjectDirectory)\priconfig.xml</_GLPriConfigFile>
+    <!-- makepri.exe：优先用 WindowsAppSDK 依赖的 SDK BuildTools（targets 里找 mt.exe 是同一个目录），
+         再依次退回本机 Windows SDK 的架构目录 / x64 目录。 -->
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSDKBuildToolsBinVersionedArchFolder)makepri.exe')">$(WindowsSDKBuildToolsBinVersionedArchFolder)makepri.exe</_GLMakePriExe>
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSdkDir)bin\$(WindowsTargetPlatformVersion)\x64\makepri.exe')">$(WindowsSdkDir)bin\$(WindowsTargetPlatformVersion)\x64\makepri.exe</_GLMakePriExe>
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\makepri.exe')">$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\makepri.exe</_GLMakePriExe>
+  </PropertyGroup>
+
+  <Target Name="GenerateResourcesPriForUnpackagedSelfContained"
+          AfterTargets="Build"
+          DependsOnTargets="CopyVCRuntimeForPackaging"
+          Condition="'$(WindowsAppSDKSelfContained)' == 'true' and '$(MSBuildProjectExtension)' != '.wapproj'">
+
+    <Error Condition="'$(_GLMakePriExe)' == ''"
+           Text="makepri.exe not found. Install the Windows 10 SDK or the Microsoft.Windows.SDK.BuildTools package: an unpackaged self-contained WinUI 3 app cannot start without resources.pri." />
+    <Error Condition="!Exists('$(_GLPriConfigFile)')"
+           Text="priconfig.xml not found: $(_GLPriConfigFile)" />
+
+    <!-- 先删再生成：否则上一次构建留下的 resources.pri 会被本次当成普通文件索引进去。 -->
+    <Delete Files="$(OutDir)resources.pri" />
+
+    <Exec Command="&quot;$(_GLMakePriExe)&quot; new /pr &quot;.&quot; /cf &quot;$(_GLPriConfigFile)&quot; /of &quot;$(OutDir)resources.pri&quot; /o"
+          WorkingDirectory="$(OutDir)" />
+
+    <Error Condition="!Exists('$(OutDir)resources.pri')"
+           Text="makepri ran but $(OutDir)resources.pri was not produced - the app would fail silently at startup." />
+    <Message Importance="high" Text="Generated resources.pri (unpackaged self-contained): $(OutDir)resources.pri" />
+  </Target>
 </Project>
