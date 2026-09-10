@@ -133,6 +133,37 @@ jobs:
               if (-not (Get-ChildItem $buildDir -Filter '*.pri' -Recurse -ErrorAction SilentlyContinue)) {
                 $errors += "[self-contained] no bundled .pri resource files (WinUI control styles depend on them)"
               }
+
+              # resources.pri is MANDATORY for an unpackaged WinUI 3 app, and it is exactly the
+              # one file the WindowsAppSDK self-contained targets deliberately do not bring
+              # along: Microsoft.WindowsAppSDK.SelfContained.targets deletes the merged
+              # resources.pri it unpacks from the runtime MSIX ("each required pri will be
+              # copied over separately"), assuming the app's own build produces a resources.pri
+              # that merges those framework PRIs.
+              #
+              # This project used to override _GenerateProjectPriFile to a no-op, so that file
+              # never existed. The app then died silently: XAML could not resolve
+              # ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml, InitializeComponent
+              # threw, and the UnhandledException handler's Handled(true) swallowed it -
+              # no window, no dialog, nothing in the event log. That is "double-click does
+              # nothing", and it happens on Windows 11 exactly as on Windows 10.
+              #
+              # Assert on the string "themeresources", not merely on the file existing: that
+              # proves the PRI really merged the WinUI framework XAML resources, which is the
+              # entire reason the file must be there.
+              $pri = Join-Path $buildDir 'resources.pri'
+              if (-not (Test-Path $pri)) {
+                $errors += "[self-contained] resources.pri is missing from the payload: WinUI cannot resolve its themeresources, so the app starts and immediately dies with no window and no error"
+              } else {
+                $priLen = (Get-Item $pri).Length
+                if ($priLen -lt 100KB) {
+                  $errors += "[self-contained] resources.pri is only $priLen bytes - it does not contain the merged WinUI framework resources"
+                }
+                $priText = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($pri))
+                if ($priText -notmatch 'themeresources') {
+                  $errors += "[self-contained] resources.pri does not reference themeresources (the root resource dictionary of every WinUI control style), so the framework PRIs were not merged in"
+                }
+              }
               # WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false in the vcxproj
               # makes the exe statically import Microsoft.WindowsAppRuntime.dll. That is what
               # turns "runtime cannot be loaded" from a silent exit() (the classic
@@ -163,11 +194,9 @@ jobs:
             if (-not (Test-Path (Join-Path $buildDir $f))) { $errors += "missing $f" }
           }
 
-          # resources.pri: this app localizes strings at compile time (Services\Localization.cpp),
-          # so a missing resources.pri was measured to be non-fatal. Warn only.
-          if (-not (Test-Path (Join-Path $buildDir 'resources.pri'))) {
-            $warnings += "resources.pri was not produced (localization is compile-time built-in for this app; measured non-fatal)"
-          }
+          # resources.pri is asserted above (self-contained mode). Do not downgrade that check
+          # to a warning: a payload without it looks perfectly healthy - it just never shows
+          # a window.
 
           # Debug junk that must not ship.
           $junk = Get-ChildItem $buildDir -Include *.pdb, *.ilk -Recurse -ErrorAction SilentlyContinue

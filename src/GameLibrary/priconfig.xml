@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  MakePri configuration for the unpackaged (self-contained) GameLibrary build.
+
+  Invoked from GameLibrary.vcxproj (target GenerateResourcesPriForUnpackagedSelfContained):
+
+      makepri new /pr <OutDir> /cf priconfig.xml /of <OutDir>\resources.pri /o
+
+  Two things are load-bearing here and must not be "simplified":
+
+    1. There is NO <packaging> element. The default config produced by
+       "makepri createconfig" contains
+
+           <packaging>
+             <autoResourcePackage qualifier="Language"/>
+             ...
+           </packaging>
+
+       which splits resources into per-language satellite PRIs. For an unpackaged
+       app we need ONE resources.pri containing everything, so the section is
+       removed. Microsoft's own guidance for unpackaged apps says the same.
+
+    2. <indexer-config type="PRI"/> must stay. That is the indexer that merges
+       the WinUI framework PRIs which the WindowsAppSDK self-contained targets
+       drop next to the exe (Microsoft.UI.pri, Microsoft.UI.Xaml.Controls.pri)
+       into our single resources.pri. Without it, WinUI cannot resolve
+       ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml and the app dies
+       during InitializeComponent.
+
+  Do NOT add /IndexName on the command line: with no index name and no package
+  manifest, MakePri sets the root namespace to "Application", which is exactly
+  what the runtime expects for unpackaged apps.
+-->
+<resources targetOsVersion="10.0.0" majorVersion="1">
+	<index root="\" startIndexAt="\">
+		<default>
+			<qualifier name="Language" value="en-US"/>
+			<qualifier name="Contrast" value="standard"/>
+			<qualifier name="Scale" value="100"/>
+			<qualifier name="HomeRegion" value="001"/>
+			<qualifier name="TargetSize" value="256"/>
+			<qualifier name="LayoutDirection" value="LTR"/>
+			<qualifier name="Theme" value="dark"/>
+			<qualifier name="AlternateForm" value=""/>
+			<qualifier name="DXFeatureLevel" value="DX9"/>
+			<qualifier name="Configuration" value=""/>
+			<qualifier name="DeviceFamily" value="Universal"/>
+			<qualifier name="Custom" value=""/>
+		</default>
+		<indexer-config type="folder" foldernameAsQualifier="true" filenameAsQualifier="true" qualifierDelimiter="."/>
+		<indexer-config type="resw" convertDotsToSlashes="true" initialPath=""/>
+		<indexer-config type="resjson" initialPath=""/>
+		<indexer-config type="PRI"/>
+	</index>
+</resources>

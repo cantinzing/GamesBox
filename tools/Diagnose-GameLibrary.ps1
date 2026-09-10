@@ -13,9 +13,13 @@
     ------------
       1. Host / OS report (so we know exactly which Windows build is failing).
       2. Payload inventory + exe identity (detects a STALE extracted folder).
+         Includes the decisive resources.pri check: a payload can be missing it and
+         still look complete, and that alone produces "double-click does nothing".
       3. WindowsAppRuntime framework package presence.
       4. Launch test: runs GameLibrary.exe, waits, reports the process EXIT CODE
          (the silent-exit bug leaves the reason in the exit code).
+      4b. The app's own startup log (%LOCALAPPDATA%\GameCentral\startup.log) - it
+         records each startup phase, so it shows exactly where the app gave up.
       5. DLL load probe: loads every *.dll shipped next to the exe and reports
          which one cannot be loaded, and with which Win32 error.
       6. Application event log digest (Application Error / WER / .NET Runtime).
@@ -147,6 +151,31 @@ $bootstrap = Join-Path $Root 'Microsoft.WindowsAppRuntime.Bootstrap.dll'
 if (Test-Path -LiteralPath $bootstrap) { W "  Bootstrap.dll present (normal, shipped by the SDK either way)" } else { W "  Bootstrap.dll absent" }
 $priCount = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.pri' -ErrorAction SilentlyContinue).Count
 W ("  *.pri files bundled   : " + $priCount)
+
+# resources.pri is the decisive one, and the one a payload can be missing while still
+# looking perfectly complete. WinUI resolves EVERY control style through
+# ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml, which is indexed in this file.
+# Without it the app starts, InitializeComponent throws, the UnhandledException handler
+# swallows the error, and all the user sees is "double-click does nothing" - on Windows 10
+# and Windows 11 alike. The WindowsAppSDK self-contained targets deliberately do not copy
+# it (they expect the app's own build to generate a merged one).
+$priMain = Join-Path $Root 'resources.pri'
+if (-not (Test-Path -LiteralPath $priMain)) {
+    W "  [MISS] resources.pri   <== THIS ALONE CAUSES 'double-click does nothing'"
+    W "         WinUI cannot find its themeresources, so InitializeComponent throws and"
+    W "         the app dies with no window and no error message."
+    W "         Fix: copy resources.pri from a current build next to the exe."
+} else {
+    $priLen = (Get-Item -LiteralPath $priMain).Length
+    $priAscii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($priMain))
+    $hasTheme = $priAscii -match 'themeresources'
+    W ("  [ OK ] resources.pri   : " + $priLen + " bytes   themeresources=" + $hasTheme)
+    if ($priLen -lt 100KB -or -not $hasTheme) {
+        W "  [BAD ] resources.pri does not hold the merged WinUI framework resources"
+        W "         (expected more than 100KB and a 'themeresources' reference)."
+        W "         Replace it with the one from a current build."
+    }
+}
 $xbfCount = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.xbf' -ErrorAction SilentlyContinue).Count
 W ("  *.xbf files bundled   : " + $xbfCount)
 
@@ -230,6 +259,37 @@ if ($alive) {
     }
 } else {
     W "RESULT: could not determine the process state."
+}
+
+# ------------------------------------------------- 4b. app startup log
+Section "4b. APP STARTUP LOG (written by the app itself)"
+
+# GameLibrary appends a line per startup phase to %LOCALAPPDATA%\GameCentral\startup.log,
+# including on the failure paths. It is the single most useful artifact in this report:
+# it says exactly how far the app got before it gave up.
+$appLog = Join-Path $env:LOCALAPPDATA 'GameCentral\startup.log'
+if (Test-Path -LiteralPath $appLog) {
+    $li = Get-Item -LiteralPath $appLog
+    W ("Log file : " + $appLog)
+    W ("Modified : " + $li.LastWriteTime + "   size=" + $li.Length)
+    W ""
+    $tail = @(Get-Content -LiteralPath $appLog -Tail 40 -ErrorAction SilentlyContinue)
+    foreach ($l in $tail) { W ("  " + $l) }
+    W ""
+    $joined = ($tail -join ' ')
+    if ($joined -match 'Cannot locate resource') {
+        W "VERDICT: the app could not resolve a XAML resource. That is almost always a"
+        W "         missing or empty resources.pri next to the exe - see section 2."
+    } elseif ($joined -match 'OnLaunched: MainWindow activated') {
+        W "VERDICT: the app reached 'MainWindow activated', so startup itself is healthy."
+        W "         If no window is visible, the failure is later (page load, data access)."
+    } elseif ($joined -match 'UnhandledException') {
+        W "VERDICT: an unhandled XAML exception was raised - read the line above it."
+    }
+} else {
+    W ("No startup log at " + $appLog)
+    W "Either the app never got far enough to write one (loader-level failure: see"
+    W "sections 4 and 5), or this is an older build that predates the logging."
 }
 
 # ---------------------------------------------------------------- 5. dll probe
@@ -327,13 +387,20 @@ Section "7. WHAT THIS MEANS"
 
 W "Send the whole file back and the failure can be pinpointed. Quick reading guide:"
 W ""
-W "  A) exit code 0x80000003 or 0x8007007E + a [FAIL] line in section 5"
+W "  A) section 2 shows [MISS] resources.pri (or [BAD] with themeresources=False)"
+W "     -> that is the whole bug. WinUI cannot load its control styles, the app dies"
+W "        inside InitializeComponent, and older builds swallowed the exception, so"
+W "        all you saw was 'double-click does nothing'. Put resources.pri next to"
+W "        the exe and it runs."
+W "  B) section 4b ends with an 'UnhandledException' line"
+W "     -> the app told you what threw. Read the line right above it."
+W "  C) exit code 0x80000003 or 0x8007007E + a [FAIL] line in section 5"
 W "     -> the bundled WindowsAppSDK runtime cannot load on this machine."
-W "  B) 'process STILL RUNNING but NO main window'"
-W "     -> XAML threw during startup and the UnhandledException handler swallowed it."
-W "  C) section 6 shows a faulting module"
+W "  D) 'process STILL RUNNING but NO main window'"
+W "     -> the app got past the loader but died or hung inside XAML."
+W "  E) section 6 shows a faulting module"
 W "     -> that module is where it died."
-W "  D) section 2 shows an old mtime / missing files"
+W "  F) section 2 shows an old mtime / missing files"
 W "     -> you tested a stale or incomplete extraction, not the new build."
 
 $outFile = Join-Path $Root 'Diagnose-Report.txt'

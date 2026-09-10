@@ -377,4 +377,74 @@
     </ItemGroup>
     <Copy SourceFiles="@(_VCRuntimeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
+
+  <!-- =======================================================================
+       未打包(自包含)产物必须自带 resources.pri —— 少了它应用就是「双击没反应」。
+
+       【为什么必须有】
+       Microsoft.WindowsAppSDK.SelfContained.targets 在解出运行时 MSIX 之后
+       【主动删掉】其中的合并 resources.pri。该 targets 原文里的英文说明是：
+         "We do not need to copy over the merged resources.pri from the msix,
+          each required pri will be copied over separately."
+       对应语句就是删掉 MsixContent 目录下 resources.pri 的那个 Delete 任务。
+
+       它只把 Microsoft.UI.pri / Microsoft.UI.Xaml.Controls.pri 作为独立 pri
+       复制到输出目录，并假定【应用自己的构建会生成一份 resources.pri 把这些框架
+       pri 合并进去】。
+
+       而本工程历史上有 `_GenerateProjectPriFile` 空操作覆写 +
+       AppxGeneratePriEnabled=false + IncludeProjectPriFile=false，那份
+       resources.pri 从来没有被生成过。后果（与操作系统版本无关，Win10/Win11 一样）：
+
+         · WinUI 解析不到 ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml
+           —— 那是所有控件样式的根资源字典；
+         · App::InitializeComponent 抛异常，被 App::UnhandledException 里的
+           e.Handled(true) 吞掉；
+         · 于是：没有窗口、没有报错、事件日志空白 —— 用户只看到「双击没反应」。
+
+       【做法】按官方《Localize strings in your UI / MRT Core》对未打包应用的指引手工生成：
+           makepri new /pr . /cf priconfig.xml /of <OutDir>\resources.pri
+       配置见同目录 priconfig.xml：不含 <packaging> 段（保证合并成单一 pri），
+       保留 <indexer-config type="PRI"/>（用于合并框架 pri）。
+       不传 /IndexName —— 无索引名 + 无包清单时根命名空间自动为 Application，
+       这正是未打包运行时需要的。
+
+       【为什么只跑自包含】MSIX(框架依赖)由 .wapproj 产出它自己的 resources.pri，
+       两者共用同一个 OutDir，都写会打架。
+
+       【为什么用 WorkingDirectory + /pr "."】
+       $(OutDir) 以反斜杠结尾且路径可能含空格（"...\Default Project\..."）。
+       直接拼 /pr "$(OutDir)" 会得到 "...\GameLibrary\"，命令行解析会把结尾的
+       \" 当成转义引号，路径就断了。改用 cwd=OutDir + /pr "." 彻底绕开这个坑，
+       也不依赖任何未经验证的 MSBuild 属性函数。
+       ======================================================================= -->
+  <PropertyGroup Condition="'$(WindowsAppSDKSelfContained)' == 'true'">
+    <_GLPriConfigFile>$(MSBuildProjectDirectory)\priconfig.xml</_GLPriConfigFile>
+    <!-- makepri.exe：优先用 WindowsAppSDK 依赖的 SDK BuildTools（targets 里找 mt.exe 是同一个目录），
+         再依次退回本机 Windows SDK 的架构目录 / x64 目录。 -->
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSDKBuildToolsBinVersionedArchFolder)makepri.exe')">$(WindowsSDKBuildToolsBinVersionedArchFolder)makepri.exe</_GLMakePriExe>
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSdkDir)bin\$(WindowsTargetPlatformVersion)\x64\makepri.exe')">$(WindowsSdkDir)bin\$(WindowsTargetPlatformVersion)\x64\makepri.exe</_GLMakePriExe>
+    <_GLMakePriExe Condition="'$(_GLMakePriExe)' == '' and Exists('$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\makepri.exe')">$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\makepri.exe</_GLMakePriExe>
+  </PropertyGroup>
+
+  <Target Name="GenerateResourcesPriForUnpackagedSelfContained"
+          AfterTargets="Build"
+          DependsOnTargets="CopyVCRuntimeForPackaging"
+          Condition="'$(WindowsAppSDKSelfContained)' == 'true' and '$(MSBuildProjectExtension)' != '.wapproj'">
+
+    <Error Condition="'$(_GLMakePriExe)' == ''"
+           Text="makepri.exe not found. Install the Windows 10 SDK or the Microsoft.Windows.SDK.BuildTools package: an unpackaged self-contained WinUI 3 app cannot start without resources.pri." />
+    <Error Condition="!Exists('$(_GLPriConfigFile)')"
+           Text="priconfig.xml not found: $(_GLPriConfigFile)" />
+
+    <!-- 先删再生成：否则上一次构建留下的 resources.pri 会被本次当成普通文件索引进去。 -->
+    <Delete Files="$(OutDir)resources.pri" />
+
+    <Exec Command="&quot;$(_GLMakePriExe)&quot; new /pr &quot;.&quot; /cf &quot;$(_GLPriConfigFile)&quot; /of &quot;$(OutDir)resources.pri&quot; /o"
+          WorkingDirectory="$(OutDir)" />
+
+    <Error Condition="!Exists('$(OutDir)resources.pri')"
+           Text="makepri ran but $(OutDir)resources.pri was not produced - the app would fail silently at startup." />
+    <Message Importance="high" Text="Generated resources.pri (unpackaged self-contained): $(OutDir)resources.pri" />
+  </Target>
 </Project>
