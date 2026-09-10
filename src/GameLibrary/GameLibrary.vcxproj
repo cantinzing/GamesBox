@@ -79,6 +79,29 @@
     <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)'!='true' and '$(AppxPackage)'!='true'">true</WindowsAppSdkBootstrapInitialize>
     <!-- 自包含：走 UndockedRegFreeWinRT，加载随应用分发的本地运行时（免注册激活） -->
     <WindowsAppSdkUndockedRegFreeWinRTInitialize Condition="'$(WindowsAppSDKSelfContained)'=='true'">true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+
+    <!-- =====================================================================
+         让「运行时加载失败」变成可见的错误，而不是静默退出。
+
+         默认情况下 WindowsAppSDK 会定义
+           MICROSOFT_WINDOWSAPPSDK_UNDOCKEDREGFREEWINRT_AUTO_INITIALIZE_LOADLIBRARY
+         于是 UndockedRegFreeWinRT-AutoInitializer.cpp 在【静态初始化期】
+         （wWinMain 之前）执行：
+
+             static HMODULE dll{ LoadLibraryExW(L"Microsoft.WindowsAppRuntime.dll", ...) };
+             if (!dll) { DebugBreak(); exit(HRESULT_FROM_WIN32(GetLastError())); }
+
+         一旦这个 LoadLibrary 失败（随包运行时不全、依赖 DLL 在目标系统上缺失等），
+         进程会【一声不响】地退出：没有窗口、没有报错、没有事件日志，
+         用户看到的只有「双击没反应」，而且日志里连一行都留不下。
+
+         关掉这个开关后，改用隐式导入（Microsoft.WindowsAppRuntime.lib 本来就在
+         链接依赖里，见 WindowsAppSDK-Nuget-Native.C.props）：
+         加载失败会由 Windows 加载器接管，弹出「找不到 XXX.dll」的具名提示，
+         直接把缺失的模块名告诉我们。CI 的便携包校验会断言 exe 确实导入了
+         Microsoft.WindowsAppRuntime.dll，防止这个开关被悄悄改回去。
+         ===================================================================== -->
+    <WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary Condition="'$(WindowsAppSDKSelfContained)'=='true'">false</WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
     <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>

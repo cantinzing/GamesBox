@@ -133,8 +133,16 @@ jobs:
               if (-not (Get-ChildItem $buildDir -Filter '*.pri' -Recurse -ErrorAction SilentlyContinue)) {
                 $errors += "[self-contained] no bundled .pri resource files (WinUI control styles depend on them)"
               }
+              # WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false in the vcxproj
+              # makes the exe statically import Microsoft.WindowsAppRuntime.dll. That is what
+              # turns "runtime cannot be loaded" from a silent exit() (the classic
+              # double-click-does-nothing) into a Windows dialog naming the missing module.
+              # Assert it, so the property cannot be reverted unnoticed.
+              if ($text -notmatch 'Microsoft\.WindowsAppRuntime\.dll') {
+                $errors += "[self-contained] GameLibrary.exe does not import Microsoft.WindowsAppRuntime.dll - WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false is not taking effect"
+              }
               if ($text -match 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
-                $warnings += "Self-contained payload still imports Microsoft.WindowsAppRuntime.Bootstrap.dll (usually an unnecessary bootstrap dependency)"
+                $warnings += "Self-contained payload imports Microsoft.WindowsAppRuntime.Bootstrap.dll (unexpected in self-contained mode)"
               }
             } else {
               Write-Host "Detected FRAMEWORK-DEPENDENT payload: verifying bootstrap chain."
@@ -186,6 +194,16 @@ jobs:
           New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
           Copy-Item "$buildDir\*" $portableDir -Recurse -Force
           Get-ChildItem $portableDir -Recurse -File -Include *.pdb, *.ilk, *.exp, *.lib | Remove-Item -Force
+
+          # Ship the self-diagnostic harness inside the zip. When the app refuses to
+          # start on a target machine, the user runs Diagnose.bat and sends back
+          # Diagnose-Report.txt - no build, no debugger, no guesswork.
+          $diag = @("tools\Diagnose.bat", "tools\Diagnose-GameLibrary.ps1")
+          foreach ($f in $diag) {
+            $src = Join-Path $env:GITHUB_WORKSPACE $f
+            if (-not (Test-Path $src)) { throw "diagnostic file missing from the repo: $f" }
+            Copy-Item $src $portableDir -Force
+          }
 
           # Bilingual usage note ships with the zip. The text lives in a real UTF-8 file
           # in the repo, and is re-encoded to UTF-8-with-BOM here so Windows Notepad
