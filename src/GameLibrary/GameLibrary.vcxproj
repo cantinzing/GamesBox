@@ -42,9 +42,43 @@
     <WindowsPackageType>None</WindowsPackageType>
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
-    <!-- 框架依赖部署：运行时走 WindowsAppSDK 框架包 + VCLibs 框架包（MSIX 安装即带）。
-          不启用自包含：自包含 unpackaged 有 DLL 版本冲突(c0000602)，仅 MSIX 可用自包含。 -->
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+
+    <!-- =====================================================================
+         未打包(unpackaged) WinUI 3 的部署开关 —— 必须显式写死，不能依赖默认值。
+
+         原因：C++ 工程不会自动设置 $(OutputType)，而 WindowsAppSDK 的 targets
+         用 $(OutputType) 判断「这是应用程序还是类库」。一旦为空就会走类库分支：
+
+           · Microsoft.WindowsAppSDK.BootstrapCommon.targets
+             不会把 WindowsAppSdkBootstrapInitialize 置为 true
+             → MddBootstrapAutoInitializer.cpp 不参与编译
+             → 进程从不调用 MddBootstrapInitialize
+             → 未打包应用无法绑定到 WindowsAppSDK 框架包，
+               Microsoft.ui.xaml.dll 加载失败，双击后静默退出（没有任何提示）。
+
+           · Microsoft.Build.Msix.Pri.targets 里 GenerateLibraryLayout 默认为 true
+             → 不生成 resources.pri。
+
+         另外 Microsoft.WindowsAppSDK.BootstrapCommon.targets 只在
+         WindowsPackageType=None 且非自包含时才置位，所以这里逐项显式声明。
+         ===================================================================== -->
+    <OutputType>WinExe</OutputType>
+
+    <!-- 部署模式默认「自包含」：WindowsAppSDK 运行时随应用一起分发，目标机器
+         【无需安装任何运行时】，解压/双击或安装后即可运行（“解压即用”）。
+         代价仅是输出目录大几十 MB。
+         需要「框架依赖」（体积小、依赖目标机已装运行时）的产物时，例如 MSIX/Store，
+         在命令行显式传 /p:WindowsAppSDKSelfContained=false 覆盖。 -->
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)'==''">true</WindowsAppSDKSelfContained>
+
+    <!-- 下面两个初始化开关互斥，由 WindowsAppSDK 的 AutoInitializer 在编译期读取：
+         WindowsAppRuntimeAutoInitializer.cpp（始终参与编译）里的全局静态对象会按需
+         自动执行对应初始化。用户代码【不要】再手动调用任何 Initialize()。 -->
+
+    <!-- 框架依赖（未打包）：走 MddBootstrapInitialize，绑定已安装的 WindowsAppSDK 框架包 -->
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)'!='true' and '$(AppxPackage)'!='true'">true</WindowsAppSdkBootstrapInitialize>
+    <!-- 自包含：走 UndockedRegFreeWinRT，加载随应用分发的本地运行时（免注册激活） -->
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize Condition="'$(WindowsAppSDKSelfContained)'=='true'">true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
       <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
       <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
     <TargetPlatformVersion Condition="'$(TargetPlatformVersion)'==''">$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
@@ -60,15 +94,29 @@
     <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
     <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
   </PropertyGroup>
-  <!-- Output paths: unpackaged WinUI (ApplicationType=Windows Store + AppxPackage=false)
-       does not get OutDir/IntDir/OutputPath from the Cpp defaults, so define them here.
-       Layout mirrors the existing build/ convention (build/bin and build/obj). -->
-  <PropertyGroup>
-    <OutDir Condition="'$(OutDir)'==''">$(ProjectDir)..\..\build\bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir Condition="'$(IntDir)'==''">$(ProjectDir)..\..\build\obj\$(Platform)\$(Configuration)\</IntDir>
-    <OutputPath Condition="'$(OutputPath)'==''">$(OutDir)</OutputPath>
-  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- Output paths —— 放在 Microsoft.Cpp.props 之后，保证不会被覆盖。
+       （MSBuild 属性后赋值者胜；放前面的话会被下面这条默认值顶掉。）
+
+       机制：本工程 ApplicationType=Windows Store，所以 Microsoft.Cpp.props 链路里
+       会导入 Microsoft.Cpp.AppContainerApplication.props，其中
+         <OutDir Condition="'$(OutDirWasSpecified)'!='true'">
+             $(SolutionDir)$(Platform)\$(Configuration)\$(MSBuildProjectName)\
+       而 SolutionDir 在未显式给出时会回落到 $(ProjectDir)（见 Microsoft.Cpp.Default.props），
+       于是 CI 里直接编译 vcxproj 时它算出来是
+         <projdir>\x64\Release\GameLibrary\
+       —— 与下面这行一致。这里显式钉死的目的不是“修正路径”，而是把
+       VS 解决方案构建 与 CI 命令行构建 收敛到同一个目录，即
+       GameLibrary.Package.wapproj 的 AppxPackagePayload 约定的
+         ..\GameLibrary\$(Platform)\$(Configuration)\GameLibrary\
+       避免“打包的”和“刚编译的”是两批文件。（CI 的 Verify portable payload
+       步骤会校验该目录确实存在且 exe 合格，作为兜底。） -->
+  <PropertyGroup>
+    <OutDir>$(MSBuildProjectDirectory)\$(Platform)\$(Configuration)\GameLibrary\</OutDir>
+    <IntDir>$(MSBuildProjectDirectory)\obj\$(Platform)\$(Configuration)\</IntDir>
+    <OutputPath>$(OutDir)</OutputPath>
+  </PropertyGroup>
   <PropertyGroup>
     <_NuGetTargetFallbackMoniker>$(_NuGetTargetFallbackMoniker);native,Version=v0.0</_NuGetTargetFallbackMoniker>
   </PropertyGroup>

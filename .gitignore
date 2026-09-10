@@ -14,6 +14,9 @@ GameLibrary-portable-win-x64.zip
 *.suo
 .vs/
 
+# wapproj asset processing cache (regenerated on build; was committed by mistake once)
+*.assets.cache
+
 # vcpkg
 vcpkg/
 vcpkg_installed/
@@ -30,6 +33,9 @@ dist/
 # Editor / misc
 .vscode/
 out/
+
+# WorkBuddy / AI agent workspace (memory, skills, scratch scripts — machine-local, not shared)
+.workbuddy/
 
 # Test / log artifacts
 *.log

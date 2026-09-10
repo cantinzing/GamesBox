@@ -117,7 +117,8 @@ You can also open `GameLibrary.sln` in Visual Studio, select **Debug | x64** in 
 
 ### 5. Local development notes
 
-- **Do not debug the self-contained (Release) exe on your dev machine**: on a machine that also has the registered WindowsAppRuntime framework package it may crash (`0xC0000602`, a known WinUI 3 self-contained limitation). Always use the Debug build for local development and debugging.
+- **The self-contained (Release) exe used to crash (`0xC0000602`) on a machine that also had the WindowsAppRuntime framework package registered.** Root cause located and fixed: the app code manually called `Bootstrap::Initialize()` — a code path meant only for *framework-dependent* deployment, which in a self-contained build looks for the framework package and conflicts with the locally shipped runtime. That call has been **removed**; runtime initialization is now performed automatically by the WindowsAppSDK auto-initializer (a global static object in `WindowsAppRuntimeAutoInitializer.cpp`), selected by deployment mode. **User code must neither need nor perform any manual initialization.**
+- Debug builds are still recommended for everyday local development; final validation of the self-contained Release should be done with a CI artifact on a **clean machine** (your dev box has the framework package installed, so it cannot reproduce the difference).
 - Settings credentials (IGDB / SteamGridDB) are stored in the Windows Credential Manager; the database is at `%LOCALAPPDATA%\GameLibrary\games.db`. While debugging you can delete this file to reset the entire game library.
 - If the build complains about missing Windows App SDK headers / libraries, confirm the VS “Windows App SDK” workload is installed and `VCPKG_ROOT` is set correctly.
 
@@ -174,19 +175,22 @@ msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj `
 
 **4) Install**
 
-a. Trust the certificate (first time only) — pick one:
+a. Trust the certificate (first time only) — recommended: the **current-user** store, which needs no elevation:
 
-   - Double-click `GameLibrary_TemporaryKey.pfx` → Install → choose “Trusted People” store; or
-   - via PowerShell (admin):
-     ```powershell
-     Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-     ```
-   - or enable Windows “Settings → Update & Security → For developers → Sideload apps” and double-click the `.msix`.
+   ```powershell
+   Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+   ```
 
-b. Install the app — run as admin, or:
+   You can also double-click `GameLibrary_TemporaryKey.pfx` → Install → choose “Trusted People” (also current-user scope).
+   Only if you want to trust the cert for **all users on the machine** do you need admin: `-CertStoreLocation Cert:\LocalMachine\TrustedPeople`.
+
+b. Install the app — **current-user install, no admin required**:
+
    ```powershell
    Add-AppxPackage -Path "AppPackages\GameLibrary_<version>_x64_<channel>.msix"
    ```
+
+   Windows 10 2004 and later **allow sideloading by default**, so no toggle is needed; on older builds, enable “Settings → Update & Security → For developers → Sideload apps” once (that toggle does require elevation).
 
 c. Launch **GameLibrary** from the Start menu.
 
@@ -202,9 +206,9 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 Pushing to `main` or triggering `workflow_dispatch` builds and packages the app on `windows-2022` and produces four artifacts (download them from the Artifacts section of the corresponding run):
 
 - **GameLibrary-portable-win-x64** (self-contained zip)
-  - Unzip and double-click `GameLibrary.exe` to run — no runtime install or certificate needed. Works on a clean Windows 10 / 11; on a machine that also has the registered WindowsAppRuntime framework package it may hit the `0xC0000602` conflict (see Local development notes, a known limitation).
+  - Unzip and double-click `GameLibrary.exe` to run — no runtime install, no certificate, and **no admin rights** required. Works on a clean Windows 10 (1809+) / 11 x64.
 - **GameLibrary-setup-win-x64** (traditional installer `setup.exe`)
-  - Double-click to run the install wizard; it installs to `C:\Program Files\GameLibrary` by default and creates Start Menu / desktop shortcuts (admin elevation is requested). The installed files are the same as the self-contained zip; the same `0xC0000602` runtime limitation applies (clean target machines are fine).
+  - Double-click to run the install wizard — **fully UAC-free**. The install scope is the current user: it installs to `%LOCALAPPDATA%\Programs\GameLibrary` by default and creates **current-user** Start Menu / desktop shortcuts. It never writes to `Program Files` or `HKLM`, so no elevation is triggered. The installed files are identical to the self-contained zip; uninstalling also needs no admin (remove it per-user under “Settings → Apps”).
 - **GameLibrary-MSIX-x64** (sideload MSIX)
   - See the “MSIX sideload” flow above. The downloaded zip unpacks to that flow’s `AppPackages` content (`*.msix` + `Add-AppPackage.ps1`). The signing cert `GameLibrary_TemporaryKey.pfx` (empty password) is **not in the artifact** — get it from the repo at `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` and install it into “Trusted People” before installing.
 - **GameLibrary-store-msixbundle** (Store submission package, unsigned `.msixbundle`)
@@ -252,7 +256,7 @@ This artifact is an **unsigned** `.msixbundle` (framework-dependent, no bundled 
 
 ## Known Limitations
 
-- Self-contained Release may conflict on machines with the installed WindowsAppRuntime framework package (see Build notes).
+- Self-contained Release previously conflicted (`0xC0000602`) on machines with the WindowsAppRuntime framework package installed: the cause was app code manually calling `Bootstrap::Initialize()` (a framework-dependent-only path). That call has been removed, and self-contained runtime initialization is now performed automatically by the WindowsAppSDK auto-initializer according to deployment mode. **Final verification is pending with a CI artifact on a clean machine.**
 - Metadata fetching depends on third-party APIs (IGDB / SteamGridDB); obtain keys and enter them in Settings.
 - Local scanning uses heuristic filtering on executable names / version info and may occasionally misclassify an edge-case helper binary.
 - Only x64 is verified; the Win32 (32-bit) and ARM64 configs are available but untested.

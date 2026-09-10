@@ -31,86 +31,188 @@ jobs:
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
 
+      # ⚠️ 重要陷阱：这里的构建器是原生(exe) 命令，而 PowerShell 默认【不会】因为原生
+      #    进程返回非零退出码就把这一步判为失败。历史上正是这个原因，让"便携构建失败"
+      #    被悄悄吞掉：CI 继续拿上一次 MSIX 构建残留的 exe（AppxPackage=true，
+      #    不链接引导库、也不拷贝 Bootstrap.dll）去加壳、去打包，最终产出一个
+      #    “CI 全绿、下载后双击无反应”的包。
+      #    所以每一次构建调用之后都必须显式检查 $LASTEXITCODE，否则等于没有断言。
       - name: Restore NuGet packages
         shell: powershell
         run: |
           msbuild GameLibrary.sln /t:Restore /p:Configuration=Release /p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw "NuGet 还原失败，退出码 $LASTEXITCODE" }
 
-      # 1) Sideload MSIX (self-signed; for manual sideload install)
-      #    与 main 一致保持框架依赖(WindowsAppSDKSelfContained=false)：
-      #    自包含(true)在 WinAppSDK 1.6/1.7 下都可能出现引导库链接问题，且 MSIX
-      #    仍需 VCLibs 框架；这里统一用框架依赖，干净机器改用便携版(已内置 VC++ 运行库)。
-      #    （崩溃修复已在源码中；目标机器安装过 VS/WinAppSDK 运行库即可正常启动）
+      # ============================================================================
+      # 部署模式（务必区分，且每一步都显式传参，不依赖 vcxproj 默认值，保证 CI 行为确定）
+      #
+      #   便携版 / setup.exe  ->  自包含  (WindowsAppSDKSelfContained=true)
+      #       运行时随应用一起分发，目标机器【无需安装任何运行时】，解压/安装即可运行。
+      #
+      #   两个 MSIX 产物        ->  框架依赖 (WindowsAppSDKSelfContained=false)
+      #       走 WindowsAppSDK 框架包，体积小。不要与自包含混用同一份输出。
+      #
+      # 三个构建共用同一个 OutDir，因此顺序至关重要：
+      #   自包含构建排在最后，保证 zip / setup.exe 拿到的是自包含产物。
+      # ============================================================================
+
+      # 1) Sideload MSIX (self-signed; for manual sideload install) —— 框架依赖
       - name: Build sideload MSIX
         shell: powershell
         run: |
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          if ($LASTEXITCODE -ne 0) { throw "Sideload MSIX 构建失败，退出码 $LASTEXITCODE" }
 
-      # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it)
+      # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it) —— 框架依赖
       - name: Build store bundle
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained= /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained=false /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+          if ($LASTEXITCODE -ne 0) { throw "Store bundle 构建失败，退出码 $LASTEXITCODE" }
 
-      # 3) 便携版：包含 WinAppSDK 框架包 + 安装脚本，首次运行需管理员权限安装框架
-      - name: Build portable (with bundled runtime)
+      # 3) 便携版 / setup.exe 的来源：【自包含】构建。
+      #    必须排在两个 MSIX 构建【之后】—— 三者共用同一个 OutDir，
+      #    自包含构建(/t:Rebuild)最后执行，保证被打包的就是自包含产物。
+      - name: Build portable (self-contained)
         shell: powershell
         run: |
-          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=false /t:Rebuild /m
+          msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /p:WindowsAppSDKSelfContained=true /t:Rebuild /m
+          if ($LASTEXITCODE -ne 0) { throw "便携版(自包含)构建失败，退出码 $LASTEXITCODE" }
 
-      # 基础代码加固：用 UPX 对便携 exe 加壳（压缩 + 简单反静态分析）。
-      # 这是最低成本的防护；如需强防护（Anti-Debug / 虚拟化 / 反 dump），
-      # 请自备 VMProtect 或 Themida 的许可证，在本步骤替换为对应命令行调用。
-      - name: Protect binaries (UPX)
+      # 发布前自检：把「双击没反应」这类问题拦在 CI 里，而不是让用户下载后才踩坑。
+      # 本步骤【模式感知】：自包含与框架依赖所需的文件不同，不能一刀切。
+      - name: Verify portable payload
         shell: powershell
         run: |
-          choco install upx -y --no-progress
-          $exe = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe"
-          if (Test-Path $exe) { upx --best --lzma "$exe" } else { Write-Host "GameLibrary.exe not found, skipping UPX" }
+          $buildDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $exe      = Join-Path $buildDir "GameLibrary.exe"
+          $errors   = @()
+          $warnings = @()
 
-      - name: Zip portable (with WinAppSDK runtime)
+          Write-Host "检查目录: $buildDir"
+          if (-not (Test-Path $buildDir)) {
+            throw "编译产物目录不存在：$buildDir（说明 vcxproj 的 OutDir 没落到这里，被打包的会是残留文件）"
+          }
+          Get-ChildItem $buildDir | Select-Object Name, Length | Format-Table -AutoSize | Out-String | Write-Host
+
+          if (-not (Test-Path $exe)) {
+            $errors += "缺少 GameLibrary.exe"
+          } else {
+            $text = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
+
+            # UPX 加壳：WinUI 3 / WindowsAppSDK 不支持，历史上正是它让 exe 彻底起不来
+            if ($text -match 'UPX!') {
+              $errors += "GameLibrary.exe 仍被 UPX 加壳（WinUI 3 不支持加壳，必须移除 UPX 步骤）"
+            }
+
+            # 模式判定：自包含会把 WinUI 运行时 DLL 一并放进输出目录
+            $isSelfContained = Test-Path (Join-Path $buildDir 'Microsoft.ui.xaml.dll')
+
+            if ($isSelfContained) {
+              Write-Host "检测到【自包含】产物：校验随包运行时完整性。"
+              # 自包含必需的核心运行时 DLL（缺任何一个，目标机双击必然没反应）
+              foreach ($f in @(
+                  'Microsoft.ui.xaml.dll',
+                  'Microsoft.WindowsAppRuntime.dll',
+                  'Microsoft.UI.Xaml.Controls.dll',
+                  'Microsoft.Windows.ApplicationModel.Resources.dll')) {
+                if (-not (Test-Path (Join-Path $buildDir $f))) { $errors += "[自包含] 缺少运行时 DLL: $f" }
+              }
+              # WinUI 控件样式等资源（缺失会导致控件无样式 / 启动异常）
+              if (-not (Get-ChildItem $buildDir -Filter '*.pri' -Recurse -ErrorAction SilentlyContinue)) {
+                $errors += "[自包含] 没有随包 .pri 资源文件（WinUI 控件样式依赖它）"
+              }
+              # 自包含走免注册激活，不应再依赖引导库
+              if ($text -match 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
+                $warnings += "自包含产物仍导入了 Microsoft.WindowsAppRuntime.Bootstrap.dll（通常是不必要的引导库依赖）"
+              }
+            } else {
+              Write-Host "检测到【框架依赖】产物：校验引导库链路。"
+              if ($text -notmatch 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
+                $errors += "框架依赖产物未导入 Microsoft.WindowsAppRuntime.Bootstrap.dll —— 未打包应用无法初始化 WindowsAppSDK（“双击没反应”的经典根因）"
+              }
+              if (-not (Test-Path (Join-Path $buildDir 'Microsoft.WindowsAppRuntime.Bootstrap.dll'))) {
+                $errors += "[框架依赖] 缺少 Microsoft.WindowsAppRuntime.Bootstrap.dll"
+              }
+            }
+          }
+
+          # 两种模式都必需：应用私有依赖
+          foreach ($f in @('sqlite3.dll','vcruntime140.dll','msvcp140.dll')) {
+            if (-not (Test-Path (Join-Path $buildDir $f))) { $errors += "缺少 $f" }
+          }
+
+          # resources.pri：本应用本地化字符串是编译期内置的（Services\Localization.cpp），
+          # 实测缺它也能启动，因此仅告警不拦截。
+          if (-not (Test-Path (Join-Path $buildDir 'resources.pri'))) {
+            $warnings += "没有生成应用自己的 resources.pri（本应用本地化为编译期内置，实测不影响启动）"
+          }
+
+          # 不该被打包进发布物的调试垃圾
+          $junk = Get-ChildItem $buildDir -Include *.pdb, *.ilk -Recurse -ErrorAction SilentlyContinue
+          if ($junk) {
+            $mb = [math]::Round(($junk | Measure-Object Length -Sum).Sum / 1MB, 1)
+            $warnings += "构建目录里有 $($junk.Count) 个调试文件（共 $mb MB），打包步骤会自动排除"
+          }
+
+          $warnings | ForEach-Object { Write-Host "::warning::$_" }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$_" }
+            throw "便携版自检未通过，已阻止打包发布"
+          }
+          Write-Host "自检通过：产物完整（已按自包含/框架依赖 模式分别校验）。"
+
+      # 打包便携版 zip。
+      # 自包含产物已内置 WindowsAppSDK 运行时，因此【不再】随包附带 MSIX 框架包或
+      # 运行时安装脚本 —— 解压即可运行，无需管理员权限。
+      - name: Zip portable (self-contained)
         shell: powershell
         run: |
-          $portableDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $buildDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          # 干净暂存目录：只放运行时需要的文件，避免把 pdb/ilk(100MB+) 塞进发布包
+          $portableDir = "$env:RUNNER_TEMP\GameLibrary-portable"
+          if (-not (Test-Path "$buildDir\GameLibrary.exe")) { throw "GameLibrary.exe 未生成：$buildDir" }
 
-          # 下载 WinAppSDK 1.7 NuGet 包，提取 x64 MSIX 框架文件
-          $nupkg = "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk/1.7.260224002/microsoft.windowsappsdk.1.7.260224002.nupkg"
-          $tmpNupkg = "$env:RUNNER_TEMP\winsdk.nupkg"
-          $tmpExtract = "$env:RUNNER_TEMP\winsdk"
-          Invoke-WebRequest -Uri $nupkg -OutFile $tmpNupkg -UseBasicParsing -ErrorAction Stop
-          $zipPath = "$env:RUNNER_TEMP\winsdk.zip"
-          Copy-Item $tmpNupkg $zipPath -Force
-          Expand-Archive -Path $zipPath -DestinationPath $tmpExtract -Force
-          $msixSrc = Join-Path $tmpExtract "tools\MSIX\win10-x64"
+          Remove-Item $portableDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
+          Copy-Item "$buildDir\*" $portableDir -Recurse -Force
+          Get-ChildItem $portableDir -Recurse -File -Include *.pdb, *.ilk, *.exp, *.lib | Remove-Item -Force
 
-          # 复制 MSIX 框架文件到便携目录
-          $msixDest = Join-Path $portableDir "WinAppSDK"
-          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
-          Copy-Item "$msixSrc\*.msix" $msixDest -Force
-          Write-Host "Staged MSIX files:"
-          Get-ChildItem $msixDest -Filter "*.msix" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1)) MB)" }
+          # 随包一份使用说明（避免用户去猜“要不要装运行时”）
+          $readmeLines = @(
+            'GameCentral (GameLibrary) - Windows x64',
+            '',
+            'This is a SELF-CONTAINED portable build.',
+            '  1. Unzip the whole folder to any location.',
+            '  2. Run GameLibrary.exe directly.',
+            'No runtime installation and no admin rights required.',
+            '',
+            'Requirement: Windows 10 1809 (build 17763) or later, x64.',
+            '',
+            '---',
+            '本版本为【自包含】绿色版：',
+            '  1. 将整个文件夹解压到任意位置；',
+            '  2. 双击 GameLibrary.exe 直接运行。',
+            '无需安装任何运行时，无需管理员权限。',
+            '要求：Windows 10 1809 (build 17763) 及以上，x64。'
+          )
+          Set-Content -Path "$portableDir\README.txt" -Value $readmeLines -Encoding UTF8
 
-          # 复制安装脚本
-          Copy-Item "$env:GITHUB_WORKSPACE\installer\install-runtime.bat" $portableDir -Force
-
-          # 打包 zip
           Compress-Archive -Path "$portableDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\GameLibrary-portable-win-x64.zip" -Force
+          Write-Host "便携版内容："
+          Get-ChildItem $portableDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
+      # setup.exe 直接打包同一份【自包含】产物，因此安装后即可运行、无需再装运行时。
       - name: Build installer (setup.exe)
         shell: powershell
         run: |
-          # 复制 MSIX 框架文件到 installer 目录（供 Inno Setup 打包）
-          $msixSrc = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary\WinAppSDK"
-          $msixDest = "$env:GITHUB_WORKSPACE\installer\WinAppSDK"
-          if (-not (Test-Path $msixDest)) { New-Item -ItemType Directory -Path $msixDest -Force | Out-Null }
-          Copy-Item "$msixSrc\*.msix" $msixDest -Force
-
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") -and -not (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe")) {
             choco install innosetup -y --no-progress --allow-downgrade
           }
           $isccDir = @("C:\Program Files (x86)\Inno Setup 6", "C:\Program Files\Inno Setup 6") | Where-Object { Test-Path "$_\ISCC.exe" } | Select-Object -First 1
           if (-not $isccDir) { throw "ISCC.exe not found after install" }
           & "$isccDir\ISCC.exe" "installer\GameLibrary.iss" /DMySourceDir="$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary" /DMyOutputDir="$env:GITHUB_WORKSPACE\installer-output" /DMyAppVersion="1.0.0.0"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup 打包失败，退出码 $LASTEXITCODE" }
 
       - name: Upload setup artifact
         uses: actions/upload-artifact@v4
