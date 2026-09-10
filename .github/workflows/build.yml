@@ -137,9 +137,12 @@ jobs:
               # makes the exe statically import Microsoft.WindowsAppRuntime.dll. That is what
               # turns "runtime cannot be loaded" from a silent exit() (the classic
               # double-click-does-nothing) into a Windows dialog naming the missing module.
-              # Assert it, so the property cannot be reverted unnoticed.
-              if ($text -notmatch 'Microsoft\.WindowsAppRuntime\.dll') {
-                $errors += "[self-contained] GameLibrary.exe does not import Microsoft.WindowsAppRuntime.dll - WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false is not taking effect"
+              #
+              # Assert on the IMPORTED FUNCTION NAME, not on the DLL name: the DLL name also
+              # appears inside the exe's embedded WinRT registration manifest, so matching on
+              # it alone would pass even with the import gone (false confidence).
+              if ($text -notmatch 'WindowsAppRuntime_EnsureIsLoaded') {
+                $errors += "[self-contained] GameLibrary.exe carries no WindowsAppRuntime_EnsureIsLoaded reference, so the static import of Microsoft.WindowsAppRuntime.dll is missing (WindowsAppSdkUndockedRegFreeWinRTInitializeLoadLibrary=false is not taking effect) and a broken runtime would fail silently again"
               }
               if ($text -match 'Microsoft\.WindowsAppRuntime\.Bootstrap\.dll') {
                 $warnings += "Self-contained payload imports Microsoft.WindowsAppRuntime.Bootstrap.dll (unexpected in self-contained mode)"
