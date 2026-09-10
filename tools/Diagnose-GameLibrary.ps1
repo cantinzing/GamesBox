@@ -246,12 +246,19 @@ public static extern IntPtr LoadLibraryExW(string lpLibFileName, IntPtr hFile, u
 public static extern bool FreeLibrary(IntPtr hModule);
 '@ -ErrorAction SilentlyContinue
 
+$probeAvailable = $null -ne ('GLD.Loader' -as [type])
+if (-not $probeAvailable) {
+    W "  Could not compile the helper (Add-Type unavailable / blocked)."
+    W "  Skipping the per-DLL probe. The exit code above and section 6 still apply."
+}
+
 $LOAD_WITH_ALTERED_SEARCH_PATH = 8
 $failed = New-Object System.Collections.Generic.List[string]
 $dlls = Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue |
         Sort-Object FullName
 
 foreach ($d in $dlls) {
+    if (-not $probeAvailable) { break }
     $h = [GLD.Loader]::LoadLibraryExW($d.FullName, [IntPtr]::Zero, $LOAD_WITH_ALTERED_SEARCH_PATH)
     if ($h -eq [IntPtr]::Zero) {
         $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -266,11 +273,15 @@ foreach ($d in $dlls) {
     }
 }
 
-if ($failed.Count -eq 0) {
+if (-not $probeAvailable) {
+    # already explained above
+} elseif ($failed.Count -eq 0) {
     W "  All shipped DLLs could be loaded. (Runtime DLLs are fine.)"
 } else {
     W ""
     W ("  " + $failed.Count + " DLL(s) failed to load - see above.")
+    W "  error 193 (BAD_EXE_FORMAT) on a resource-only DLL such as"
+    W "  Microsoft.Windows.Workloads.Resources_ec.dll is NORMAL - ignore it."
     W "  If vcruntime140*.dll / msvcp140*.dll is among them, the Visual C++ runtime is the problem."
 }
 
@@ -281,19 +292,29 @@ try {
     $start = (Get-Date).AddHours(-24)
     $evts = @()
     foreach ($prov in @('Application Error', 'Windows Error Reporting', '.NET Runtime', 'Application Hang')) {
-        $got = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = $prov; StartTime = $start } -MaxEvents 6 -ErrorAction SilentlyContinue)
+        $got = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = $prov; StartTime = $start } -MaxEvents 30 -ErrorAction SilentlyContinue)
         $evts += $got
     }
-    $evts = @($evts | Sort-Object TimeCreated -Descending | Select-Object -First 15)
-    if ($evts.Count -eq 0) {
-        W "Nothing relevant. A silent exit() or a swallowed XAML exception leaves no event at all,"
-        W "which is itself a useful clue."
+    # Anything that mentions our app wins over the noise from other software.
+    $mine = @($evts | Where-Object { $_.Message -match 'GameLibrary|GameCentral' } | Sort-Object TimeCreated -Descending | Select-Object -First 6)
+    if ($mine.Count -gt 0) {
+        W "Events mentioning GameLibrary / GameCentral (these are the interesting ones):"
+        $show = $mine
     } else {
-        foreach ($e in $evts) {
+        W "No event mentions GameLibrary. A silent exit() or a swallowed XAML exception"
+        W "leaves no event at all, which is itself a useful clue."
+        W ""
+        W "For completeness, the most recent unrelated Application-log errors on this machine:"
+        $show = @($evts | Sort-Object TimeCreated -Descending | Select-Object -First 5)
+    }
+    if ($show.Count -eq 0) {
+        W "  (nothing at all in the Application log for the last 24h)"
+    } else {
+        foreach ($e in $show) {
             W ""
             W ("  " + $e.TimeCreated + "  [" + $e.ProviderName + "] id=" + $e.Id)
             $m = ($e.Message -replace '\s+', ' ')
-            if ($m.Length -gt 420) { $m = $m.Substring(0, 420) + ' ...' }
+            if ($m.Length -gt 400) { $m = $m.Substring(0, 400) + ' ...' }
             W ("    " + $m)
         }
     }
