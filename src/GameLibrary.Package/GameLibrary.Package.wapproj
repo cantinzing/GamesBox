@@ -100,7 +100,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-      <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250602001">
+      <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002">
         <IncludeAssets>build</IncludeAssets>
       </PackageReference>
   </ItemGroup>

@@ -117,7 +117,7 @@ You can also open `GameLibrary.sln` in Visual Studio, select **Debug | x64** in 
 
 ### 5. Local development notes
 
-- **Do not debug the self-contained (Release) exe on your dev machine**: on a machine that also has the registered WindowsAppRuntime framework package it may crash (`0xC0000602`, a known WinUI 3 self-contained limitation). Always use the Debug build for local development and debugging.
+- **The self-contained (Release) exe now runs on your dev machine too**: it used to crash (`0xC0000602`) on a machine that also has the registered WindowsAppRuntime framework package, because `App.xaml.cpp` manually called `Bootstrap::Initialize()` — which takes the *framework-dependent* bootstrap path even in self-contained mode. That manual call has been removed; the WindowsAppSDK auto-initializer now picks the right path per deployment mode (self-contained -> UndockedRegFreeWinRT, framework-dependent -> MddBootstrap). The Debug build is still the recommended one for local development.
 - Settings credentials (IGDB / SteamGridDB) are stored in the Windows Credential Manager; the database is at `%LOCALAPPDATA%\GameLibrary\games.db`. While debugging you can delete this file to reset the entire game library.
 - If the build complains about missing Windows App SDK headers / libraries, confirm the VS “Windows App SDK” workload is installed and `VCPKG_ROOT` is set correctly.
 
@@ -125,13 +125,15 @@ You can also open `GameLibrary.sln` in Visual Studio, select **Debug | x64** in 
 
 ## Release (x64, self-contained)
 
-Release enables `WindowsAppSDKSelfContained`, shipping the Windows App SDK runtime DLLs next to the exe, so the target machine does not need a separate runtime install and runs on Windows 10 / 11:
+Release is **self-contained by default** (`WindowsAppSDKSelfContained` defaults to `true`), shipping the Windows App SDK runtime DLLs next to the exe, so the target machine does not need a separate runtime install and runs on Windows 10 / 11:
 
 ```powershell
 msbuild src\GameLibrary\GameLibrary.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT /t:Rebuild
 ```
 
 The self-contained output is at `src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe` (runtime co-located); distribute that folder to run.
+
+> The build automatically runs `makepri` to produce `resources.pri` in the output directory, merging the WinUI framework PRIs (`Microsoft.UI.pri`, `Microsoft.UI.Xaml.Controls.pri`) into the app's own resource index. **This file is mandatory**: an unpackaged WinUI 3 app resolves `ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml` (the root resource dictionary of every control style) through it. Without it the app throws during startup, the exception is swallowed, and you get "double-click does nothing". Config: `src\GameLibrary\priconfig.xml`.
 
 ---
 
@@ -177,13 +179,13 @@ msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj `
 a. Trust the certificate (first time only) — pick one:
 
    - Double-click `GameLibrary_TemporaryKey.pfx` → Install → choose “Trusted People” store; or
-   - via PowerShell (admin):
+   - via PowerShell (current user, no admin needed):
      ```powershell
-     Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+     Import-PfxCertificate -FilePath "src\GameLibrary.Package\GameLibrary_TemporaryKey.pfx" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
      ```
    - or enable Windows “Settings → Update & Security → For developers → Sideload apps” and double-click the `.msix`.
 
-b. Install the app — run as admin, or:
+b. Install the app — run (no admin needed), or:
    ```powershell
    Add-AppxPackage -Path "AppPackages\GameLibrary_<version>_x64_<channel>.msix"
    ```
@@ -202,9 +204,10 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
 Pushing to `main` or triggering `workflow_dispatch` builds and packages the app on `windows-2022` and produces four artifacts (download them from the Artifacts section of the corresponding run):
 
 - **GameLibrary-portable-win-x64** (self-contained zip)
-  - Unzip and double-click `GameLibrary.exe` to run — no runtime install or certificate needed. Works on a clean Windows 10 / 11; on a machine that also has the registered WindowsAppRuntime framework package it may hit the `0xC0000602` conflict (see Local development notes, a known limitation).
+  - Unzip and double-click `GameLibrary.exe` to run — **no runtime install and no admin rights required**. The package bundles the Windows App SDK runtime plus `resources.pri` (the WinUI control-style resource index; without it the app shows no window and no error). Works on a clean Windows 10 / 11.
+  - The zip also ships `Diagnose.bat`: if it ever refuses to start on some machine, run it to produce `Diagnose-Report.txt` (OS build, payload freshness, process exit code, per-DLL load results, Application event log, `resources.pri` health, startup log). Send that file back and the failure can be pinpointed.
 - **GameLibrary-setup-win-x64** (traditional installer `setup.exe`)
-  - Double-click to run the install wizard; it installs to `C:\Program Files\GameLibrary` by default and creates Start Menu / desktop shortcuts (admin elevation is requested). The installed files are the same as the self-contained zip; the same `0xC0000602` runtime limitation applies (clean target machines are fine).
+  - Double-click to run the wizard; it installs to `%LOCALAPPDATA%\Programs\GameLibrary` (per-user, **no UAC elevation at all**) and creates per-user Start Menu / desktop shortcuts. Same payload as the self-contained zip; runnable right after install.
 - **GameLibrary-MSIX-x64** (sideload MSIX)
   - See the “MSIX sideload” flow above. The downloaded zip unpacks to that flow’s `AppPackages` content (`*.msix` + `Add-AppPackage.ps1`). The signing cert `GameLibrary_TemporaryKey.pfx` (empty password) is **not in the artifact** — get it from the repo at `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` and install it into “Trusted People” before installing.
 - **GameLibrary-store-msixbundle** (Store submission package, unsigned `.msixbundle`)
