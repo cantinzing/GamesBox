@@ -363,6 +363,26 @@ jobs:
           }
           Write-Host "Verification passed: payload is complete (checked per self-contained / framework-dependent mode)."
 
+      # 发布前自检（图标）：断言 exe 的 PE 资源段里真的有图标。
+      #
+      # 为什么值得单独立一道断言：图标资源在这三条链路里【只有一条】会被自动满足。
+      #   · MSIX / Store ：磁贴和开始菜单图标来自 Package.appxmanifest -> Assets\*.png，
+      #                    所以那条链路从来都是对的，容易让人以为"仓库里有图 = 有图标"。
+      #   · 便携 zip     ：直接跑 GameLibrary.exe。
+      #   · setup.exe    ：装完跑的是同一个 GameLibrary.exe。
+      # 后两条读的是 exe 自身的 RT_GROUP_ICON / RT_ICON 资源 —— 与 Assets\ 里的 PNG
+      # 毫无关系。少了 GameLibrary.rc，exe 就是空白图标，而构建、CI、体积全都正常，
+      # 没有任何信号。这道断言把这个"静默失败"变成红灯。
+      #
+      # 断言放在 UPX 加壳【之后】：实测（UPX 4.2.4 --best --lzma）加壳不会压缩或丢弃
+      # .rsrc 段，图标图像在加壳后的文件里逐字节完好；而校验最终交付物的形态才是重点。
+      - name: Verify exe icon resource
+        shell: powershell
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          # The script throws on failure; an uncaught throw fails this step.
+          & "$ws\tools\Check-ExeIcon.ps1" -ExePath "$ws\src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe" -RequireIcoSource "$ws\src\GameLibrary\GameLibrary.ico"
+
       # 打包便携版 zip。
       # 自包含产物已内置 WindowsAppSDK 运行时，因此【不再】随包附带 MSIX 框架包或
       # 运行时安装脚本 —— 解压即可运行，无需管理员权限。

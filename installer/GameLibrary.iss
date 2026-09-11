@@ -30,6 +30,12 @@
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0.0"
 #endif
+; 应用图标：给 setup.exe 自身用（安装向导的标题栏/任务栏/文件图标）。
+; 相对路径以【本 .iss 文件所在目录】为基准，故 installer\..\src\GameLibrary\...
+; 与 GameLibrary.exe 里编译进去的是同一个 .ico，保证两处外观一致。
+#ifndef MyIconFile
+  #define MyIconFile "..\src\GameLibrary\GameLibrary.ico"
+#endif
 
 [Setup]
 AppId={{C9A8E7D6-B5F4-4C3A-9E2D-1A0B8C7D6E5F}
@@ -51,6 +57,8 @@ MinVersion=10.0.17763
 WizardStyle=modern
 DisableProgramGroupPage=no
 UninstallDisplayIcon={app}\GameLibrary.exe
+; setup.exe 自身的外观图标（与 exe 内嵌的图标同源）
+SetupIconFile={#MyIconFile}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -62,8 +70,10 @@ Source: "{#MySourceDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,*.ilk,*.exp,*.lib
 
 [Icons]
 ; 使用 user* 常量：与 lowest 权限一致，只写当前用户的开始菜单 / 桌面
-Name: "{userprograms}\GameLibrary"; Filename: "{app}\GameLibrary.exe"
-Name: "{userdesktop}\GameLibrary"; Filename: "{app}\GameLibrary.exe"; Tasks: desktopicon
+; IconFilename 显式写成 exe：不写时 Inno 也会取 Filename 的图标，但明写可以
+; 防止日后有人把 Filename 换成别的东西（如 launcher / cmd 包装）时图标悄悄丢失。
+Name: "{userprograms}\GameLibrary"; Filename: "{app}\GameLibrary.exe"; IconFilename: "{app}\GameLibrary.exe"
+Name: "{userdesktop}\GameLibrary"; Filename: "{app}\GameLibrary.exe"; IconFilename: "{app}\GameLibrary.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式:"
