@@ -18,7 +18,7 @@ Diagnose-Report.txt next to itself. That report names the exact reason
 (missing DLL, process exit code, event log entry) - please send it back.
 
 Startup traces are also written to:
-    %LOCALAPPDATA%\GameCentral\startup.log
+    %LOCALAPPDATA%\GameLibrary\startup.log
 
 
 -------------------------------------------------------------------------------
@@ -43,4 +43,4 @@ GameCentral (GameLibrary) - Windows x64 自包含绿色版
 里面会写清楚失败的确切原因（缺哪个 DLL、进程退出码、事件日志记录），请把它发回来。
 
 启动过程还会写日志到：
-    %LOCALAPPDATA%\GameCentral\startup.log
+    %LOCALAPPDATA%\GameLibrary\startup.log
