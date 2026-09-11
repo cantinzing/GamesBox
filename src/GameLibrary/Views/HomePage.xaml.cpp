@@ -541,10 +541,10 @@ namespace winrt::GameLibrary::implementation
         UpdateCardSelection(game.Id);
 
         // 动态背景：优先加载游戏背景图，缺失时淡出到占位渐变
-        LoadBackgroundAsync(game.BackgroundPath, game.Id);
+        LoadBackgroundAsync(game.BackgroundPath);
     }
 
-    winrt::Windows::Foundation::IAsyncAction HomePage::LoadBackgroundAsync(std::wstring const& path, int64_t gameId)
+    winrt::Windows::Foundation::IAsyncAction HomePage::LoadBackgroundAsync(std::wstring const& path)
     {
         try
         {

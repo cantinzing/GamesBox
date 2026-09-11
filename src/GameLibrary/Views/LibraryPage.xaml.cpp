@@ -514,7 +514,7 @@ namespace winrt::GameLibrary::implementation
         {
             for (int64_t id : m_selected)
             {
-                services.Games().DeleteGame(id);
+                services.DeleteGame(id);
             }
         }
         // 从过滤缓存中移除已删游戏
@@ -979,7 +979,7 @@ namespace winrt::GameLibrary::implementation
         auto& services = Services::AppServices::Instance();
         if (services.Initialized())
         {
-            services.Games().DeleteGame(gameId);
+            services.DeleteGame(gameId);
             m_allFiltered.erase(
                 std::remove_if(m_allFiltered.begin(), m_allFiltered.end(),
                     [gameId](Core::Game const& g) { return g.Id == gameId; }),

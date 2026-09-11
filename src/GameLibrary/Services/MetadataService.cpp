@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "MetadataService.h"
 
 #include "../Metadata/HttpHelper.h"
@@ -9,93 +9,51 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
+#include "../Core/TextUtil.h"
+
 namespace Services
 {
+    // 共用实现见 Core/TextUtil.h（原先两处各复制了一份，函数体逐字相同）
+    using Core::FindJsonString;
+    using Core::UrlEncodeW;
+
     namespace
     {
-        void WriteDiag(std::wstring const& msg)
+        // 素材文件名固定为 cover / background，但扩展名跟随来源 URL。
+        // 同一基名换过扩展名时（例如 cover.png -> cover.jpg），新文件不会覆盖旧文件，
+        // 旧的那份从此再没人引用 —— 必须显式删除，否则用户磁盘上会越攒越多。
+        // 只在【新文件写成功后】调用，确保任何时刻至少有一份可用素材。
+        void RemoveStaleSiblings(std::wstring const& dir, std::wstring const& baseName,
+            std::wstring const& keepFileName)
         {
-            try
+            std::error_code ec;
+            std::filesystem::directory_iterator it(std::filesystem::path(dir), ec);
+            if (ec)
             {
-                std::wstring out = L"[DIAG] " + msg + L"\r\n";
-                HANDLE h = CreateFileW(L"C:\\Users\\canti\\AppData\\Local\\Temp\\opencode\\diag.log",
-                    GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (h != INVALID_HANDLE_VALUE)
+                return;
+            }
+            for (auto const& entry : it)
+            {
+                std::error_code entryEc;
+                if (!entry.is_regular_file(entryEc))
                 {
-                    SetFilePointer(h, 0, nullptr, FILE_END);
-                    DWORD written = 0;
-                    WriteFile(h, out.c_str(), static_cast<DWORD>(out.size() * sizeof(wchar_t)), &written, nullptr);
-                    CloseHandle(h);
+                    continue;
+                }
+                auto name = entry.path().filename().wstring();
+                if (name == keepFileName)
+                {
+                    continue;
+                }
+                if (entry.path().stem().wstring() == baseName)
+                {
+                    std::error_code removeEc;
+                    std::filesystem::remove(entry.path(), removeEc);
                 }
             }
-            catch (...)
-            {
-            }
-        }
-
-        std::wstring UrlEncode(std::wstring const& value)
-        {
-            std::string result;
-            char const hex[] = "0123456789ABCDEF";
-            for (wchar_t ch : value)
-            {
-                if ((ch >= L'0' && ch <= L'9') || (ch >= L'A' && ch <= L'Z')
-                    || (ch >= L'a' && ch <= L'z') || ch == L'-' || ch == L'_' || ch == L'.' || ch == L'~')
-                {
-                    result.push_back(static_cast<char>(ch));
-                }
-                else
-                {
-                    unsigned int code = static_cast<unsigned int>(ch);
-                    result.push_back('%');
-                    result.push_back(hex[(code >> 4) & 0xF]);
-                    result.push_back(hex[code & 0xF]);
-                }
-            }
-            return std::wstring(result.begin(), result.end());
-        }
-
-        std::string FindJsonString(std::string const& json, std::string const& key)
-        {
-            auto marker = json.find(key);
-            if (marker == std::string::npos)
-            {
-                return {};
-            }
-            marker += key.size();
-            while (marker < json.size() && json[marker] != ':')
-            {
-                ++marker;
-            }
-            if (marker >= json.size())
-            {
-                return {};
-            }
-            ++marker;
-            while (marker < json.size() && (json[marker] == ' ' || json[marker] == '\t'
-                || json[marker] == '\r' || json[marker] == '\n'))
-            {
-                ++marker;
-            }
-            if (marker >= json.size() || json[marker] != '"')
-            {
-                return {};
-            }
-            ++marker;
-            std::string result;
-            while (marker < json.size() && json[marker] != '"')
-            {
-                if (json[marker] == '\\' && marker + 1 < json.size())
-                {
-                    ++marker;
-                }
-                result.push_back(json[marker]);
-                ++marker;
-            }
-            return result;
         }
     }
 
@@ -107,11 +65,6 @@ namespace Services
         m_dataDirectory = dataDirectory;
     }
 
-    std::wstring const& MetadataService::AssetDirectory(int64_t gameId) const
-    {
-        return m_dataDirectory;
-    }
-
     std::wstring MetadataService::EnsureAssetDirectory(int64_t gameId) const
     {
         auto assets = m_dataDirectory + L"\\assets";
@@ -119,6 +72,71 @@ namespace Services
         CreateDirectoryW(assets.c_str(), nullptr);
         CreateDirectoryW(dir.c_str(), nullptr);
         return dir;
+    }
+
+    // 删除某款游戏的全部素材缓存（删游戏时调用）。
+    // 必须在删除数据库行【之前】执行 —— 行一旦删掉，就再也无法从 gameId 推出目录位置，
+    // 图片会永久留在用户磁盘上。
+    void MetadataService::RemoveAssetDirectory(int64_t gameId) const
+    {
+        if (m_dataDirectory.empty())
+        {
+            return;
+        }
+        auto dir = m_dataDirectory + L"\\assets\\" + std::to_wstring(gameId);
+        std::error_code ec;
+        std::filesystem::remove_all(std::filesystem::path(dir), ec);
+        // ec 有意忽略：目录不存在（从未抓过素材）或个别文件被占用而删不掉，
+        // 都不应让「删除游戏」这个用户动作失败。
+    }
+
+    void MetadataService::PruneOrphanAssetDirectories(std::vector<int64_t> const& liveGameIds) const
+    {
+        if (m_dataDirectory.empty() || liveGameIds.empty())
+        {
+            return;
+        }
+        auto assets = std::filesystem::path(m_dataDirectory + L"\\assets");
+        std::error_code ec;
+        if (!std::filesystem::is_directory(assets, ec))
+        {
+            return;
+        }
+        std::error_code iterEc;
+        std::filesystem::directory_iterator it(assets, iterEc);
+        if (iterEc)
+        {
+            return;
+        }
+        for (auto const& entry : it)
+        {
+            std::error_code dirEc;
+            if (!entry.is_directory(dirEc))
+            {
+                continue;
+            }
+            auto name = entry.path().filename().wstring();
+            // 只处理纯数字目录名（本程序生成的 gameId 目录）。
+            // 其它任何内容都跳过 —— 宁可漏删，也不误删用户自己放进去的文件。
+            if (name.empty() || name.find_first_not_of(L"0123456789") != std::wstring::npos)
+            {
+                continue;
+            }
+            int64_t id = 0;
+            try
+            {
+                id = std::stoll(name);
+            }
+            catch (...)
+            {
+                continue;
+            }
+            if (std::find(liveGameIds.begin(), liveGameIds.end(), id) == liveGameIds.end())
+            {
+                std::error_code removeEc;
+                std::filesystem::remove_all(entry.path(), removeEc);
+            }
+        }
     }
 
     Core::MetadataResult MetadataService::FetchMetadata(Core::Game const& game) const
@@ -164,12 +182,6 @@ namespace Services
             bgHero.Height = 620;
             result.Backgrounds.push_back(std::move(bgHero));
         }
-        std::wstring sgdbConf = (m_steamGridDb != nullptr && m_steamGridDb->IsConfigured()) ? L"yes" : L"no";
-        std::wstring igdbConf = (m_igdb != nullptr && m_igdb->IsConfigured()) ? L"yes" : L"no";
-        WriteDiag(L"fetchmeta: sgdbConfigured=" + sgdbConf
-            + L" igdbConfigured=" + igdbConf
-            + L" sgdbAppId=" + game.SgdbAppId
-            + L" title=" + game.Title);
         // 优先 SGDB（若配置）：给出封面/背景候选；简介交给 IGDB（SGDB 无简介）。
         if (m_steamGridDb != nullptr && m_steamGridDb->IsConfigured())
         {
@@ -177,7 +189,6 @@ namespace Services
             if (providerGameId.empty())
             {
                 auto matches = m_steamGridDb->Search(game.Title);
-                WriteDiag(L"fetchmeta: sgdb search matches=" + std::to_wstring(matches.size()));
                 if (!matches.empty())
                 {
                     providerGameId = matches.front().ProviderGameId;
@@ -197,15 +208,11 @@ namespace Services
             {
                 result.Covers = m_steamGridDb->FetchCovers(providerGameId);
                 result.Backgrounds = m_steamGridDb->FetchBackgrounds(providerGameId);
-                WriteDiag(L"fetchmeta: sgdb covers=" + std::to_wstring(result.Covers.size())
-                    + L" backgrounds=" + std::to_wstring(result.Backgrounds.size())
-                    + L" providerGameId=" + providerGameId);
             }
         }
         if (m_igdb != nullptr && m_igdb->IsConfigured())
         {
             auto matches = m_igdb->Search(game.Title);
-            WriteDiag(L"fetchmeta: igdb matches=" + std::to_wstring(matches.size()));
             for (auto const& match : matches)
             {
                 if (!match.Description.empty() && result.Description.empty())
@@ -229,7 +236,6 @@ namespace Services
             && !game.SgdbAppId.empty())
         {
             result.Description = m_steamGridDb->FetchSteamDescription(game.SgdbAppId);
-            WriteDiag(L"fetchmeta: steam description len=" + std::to_wstring(result.Description.size()));
         }
         return result;
     }
@@ -239,7 +245,6 @@ namespace Services
     {
         if (candidate.Url.empty())
         {
-            WriteDiag(L"download: empty url gameId=" + std::to_wstring(gameId));
             return {};
         }
         auto dir = EnsureAssetDirectory(gameId);
@@ -272,31 +277,25 @@ namespace Services
         }
         catch (...)
         {
-            WriteDiag(L"download: GetBytes EXCEPTION gameId=" + std::to_wstring(gameId)
-                + L" url=" + candidate.Url);
             return {};
         }
         if (bytes.empty())
         {
-            WriteDiag(L"download: empty bytes gameId=" + std::to_wstring(gameId)
-                + L" url=" + candidate.Url);
             return {};
         }
         std::ofstream stream(destination, std::ios::binary | std::ios::trunc);
         if (!stream)
         {
-            WriteDiag(L"download: cannot open file gameId=" + std::to_wstring(gameId)
-                + L" dest=" + destination);
             return {};
         }
         stream.write(reinterpret_cast<char const*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
         bool ok = stream.good();
-        WriteDiag(L"download: gameId=" + std::to_wstring(gameId)
-            + L" kind=" + (kind == Core::ArtworkKind::Cover ? L"cover" : L"background")
-            + L" bytes=" + std::to_wstring(bytes.size())
-            + L" ok=" + std::wstring(ok ? L"yes" : L"no")
-            + L" dest=" + destination);
+        if (ok)
+        {
+            // 新文件已落盘，清掉同一基名的旧扩展名副本（失败时保留旧图，宁可留垃圾也不留空窗）
+            RemoveStaleSiblings(dir, fileName, fileName + extension);
+        }
         return ok ? destination : std::wstring();
     }
 
@@ -312,6 +311,7 @@ namespace Services
         {
             return {};
         }
+        RemoveStaleSiblings(dir, fileName, fileName + extension);
         return destination;
     }
 
@@ -319,7 +319,7 @@ namespace Services
     {
         std::vector<Core::SteamAppMatch> result;
         auto url = L"https://store.steampowered.com/api/storesearch/?term="
-            + UrlEncode(term) + L"&l=english&cc=us";
+            + UrlEncodeW(term) + L"&l=english&cc=us";
         std::string response;
         try
         {

@@ -42,6 +42,9 @@ namespace Services
         Core::LaunchResult LaunchGame(int64_t gameId);
         // 结束指定游戏的会话（若存在）并累加时长。
         bool EndSession(int64_t gameId);
+        // 删除游戏：先清素材缓存目录，再删数据库行。
+        // 必须走这里，不要直接调 Games().DeleteGame()，否则磁盘上的封面/背景图会永久残留。
+        bool DeleteGame(int64_t gameId);
         // 当前活动会话的启动器进程是否仍在运行（本地游戏可检测，Steam/Epic 返回 false）
         bool IsActiveSessionRunning() const;
 

@@ -40,6 +40,13 @@ out/
 # Test / log artifacts
 *.log
 
+# 改版/重构中途留下的备份文件
+# gitignore 对【已被追踪】的文件无效，所以这里加规则只能防将来再犯，
+# 存量必须用 git rm --cached 清掉（本仓库曾提交过 4 个 *.bak_roundfix）。
+*.bak_*
+*.bak
+*.orig
+
 # WindowsAppSDK runtime installer (downloaded by CI)
 installer/WinAppRuntimeInstall.exe
 installer/WinAppSDK/

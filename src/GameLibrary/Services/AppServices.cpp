@@ -86,6 +86,22 @@ namespace Services
         m_tracker->SetRepository(m_games.get());
         m_metadata = std::make_unique<MetadataService>();
         m_metadata->Configure(m_igdb.get(), m_steamGridDb.get(), m_dataDirectory);
+
+        // 启动时回收孤儿素材目录（旧版本删游戏从不清理缓存，只能靠这一步扫掉存量）。
+        // 注意：liveIds 为空即游戏库为空 —— 那种情况一律跳过，
+        // 否则一旦数据库异常被重置，这一步会把用户的素材目录全部误删。
+        {
+            std::vector<int64_t> liveIds;
+            for (auto const& game : m_games->GetAllGames())
+            {
+                liveIds.push_back(game.Id);
+            }
+            if (!liveIds.empty())
+            {
+                m_metadata->PruneOrphanAssetDirectories(liveIds);
+            }
+        }
+
         m_initialized = true;
         return true;
     }
@@ -188,6 +204,21 @@ namespace Services
         bool ok = m_tracker != nullptr && m_tracker->End(gameId);
         m_activeAdapter = nullptr;
         return ok;
+    }
+
+    bool AppServices::DeleteGame(int64_t gameId)
+    {
+        if (!m_initialized)
+        {
+            return false;
+        }
+        // 顺序要紧：素材目录只能靠 gameId 定位，所以必须在删除数据库行【之前】清理，
+        // 否则那一目录再没人找得到，图片会一直留在用户磁盘上。
+        if (m_metadata != nullptr)
+        {
+            m_metadata->RemoveAssetDirectory(gameId);
+        }
+        return m_games->DeleteGame(gameId);
     }
 
     bool AppServices::IsActiveSessionRunning() const
