@@ -8,7 +8,7 @@
   <Identity Name="GameLibrary" Publisher="CN=GameLibrary" Version="1.0.0.1" />
 
   <Properties>
-    <DisplayName>GameCentral</DisplayName>
+    <DisplayName>GameLibrary</DisplayName>
     <PublisherDisplayName>Game Library</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -24,7 +24,7 @@
   <Applications>
     <Application Id="App" Executable="GameLibrary.exe" EntryPoint="GameLibrary.App">
       <uap:VisualElements
-        DisplayName="GameCentral"
+        DisplayName="GameLibrary"
         Description="Windows 11 本地游戏库管理器"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

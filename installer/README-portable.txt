@@ -1,4 +1,4 @@
-GameCentral (GameLibrary) - Windows x64
+GameLibrary - Windows x64
 =======================================
 
 This is a SELF-CONTAINED portable build.
@@ -24,7 +24,7 @@ Startup traces are also written to:
 -------------------------------------------------------------------------------
 
 
-GameCentral (GameLibrary) - Windows x64 自包含绿色版
+GameLibrary - Windows x64 自包含绿色版
 ====================================================
 
 本版本为【自包含】绿色版：Windows App SDK 运行时已随包分发。

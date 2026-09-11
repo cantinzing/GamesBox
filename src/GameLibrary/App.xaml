@@ -10,7 +10,7 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- ===== GameCentral 沉浸式暗色调色板（取自 Figma 设计稿） ===== -->
+            <!-- ===== GameLibrary 沉浸式暗色调色板（取自 Figma 设计稿） ===== -->
             <!-- 底色 #121318 -->
             <SolidColorBrush x:Key="BackgroundBaseBrush" Color="#121318" />
             <!-- 玻璃面板不透明底色（rgba(30,31,37,0.6) 近似） -->

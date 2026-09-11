@@ -8,7 +8,7 @@
     Background="{ThemeResource BackgroundBaseBrush}">
 
     <Page.Resources>
-        <!-- 分区卡片：白 5% 圆角 16，对齐 Game Box Section (rounded-2xl bg-white/5 p-5) -->
+        <!-- 分区卡片：白 5% 圆角 16，对齐 GameLibrary Section (rounded-2xl bg-white/5 p-5) -->
         <Style x:Key="SettingsSectionStyle" TargetType="Border">
             <Setter Property="Background" Value="#0DFFFFFF" />
             <Setter Property="CornerRadius" Value="16" />

@@ -269,6 +269,8 @@ Section "4b. APP STARTUP LOG (written by the app itself)"
 # it says exactly how far the app got before it gave up.
 # Builds from before the log/data directories were unified wrote it under GameCentral\,
 # so fall back to that path - this script must also work against an older install.
+# NOTE: 'GameCentral' below is a legacy on-disk directory name, NOT a product name.
+# Do not rename it when unifying branding, or older installs stop being diagnosable.
 $appLog = Join-Path $env:LOCALAPPDATA 'GameLibrary\startup.log'
 if (-not (Test-Path -LiteralPath $appLog)) {
     $legacyLog = Join-Path $env:LOCALAPPDATA 'GameCentral\startup.log'

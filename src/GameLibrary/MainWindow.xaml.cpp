@@ -78,7 +78,7 @@ MainWindow::MainWindow()
     {
         s_instance = this;
     InitializeComponent();
-    Title(L"GameCentral");
+    Title(L"GameLibrary");
     ConfigureBorderlessWindow();
     Services::AppServices::Instance().Initialize();
 
