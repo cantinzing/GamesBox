@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "SteamGridDbProvider.h"
 
 #include "HttpHelper.h"
@@ -6,91 +6,16 @@
 #include <fstream>
 #include <sstream>
 
+#include "../Core/TextUtil.h"
+
 namespace Metadata
 {
+    // 共用实现见 Core/TextUtil.h（原先两处各复制了一份，函数体逐字相同）
+    using Core::FindJsonString;
+    using Core::UrlEncode;
+
     namespace
     {
-        void WriteDiag(std::wstring const& msg)
-        {
-            try
-            {
-                std::wstring out = L"[DIAG] " + msg + L"\r\n";
-                HANDLE h = CreateFileW(L"C:\\Users\\canti\\AppData\\Local\\Temp\\opencode\\diag.log",
-                    GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (h != INVALID_HANDLE_VALUE)
-                {
-                    SetFilePointer(h, 0, nullptr, FILE_END);
-                    DWORD written = 0;
-                    WriteFile(h, out.c_str(), static_cast<DWORD>(out.size() * sizeof(wchar_t)), &written, nullptr);
-                    CloseHandle(h);
-                }
-            }
-            catch (...)
-            {
-            }
-        }
-
-        std::string UrlEncode(std::wstring const& value)
-        {
-            std::string result;
-            char const hex[] = "0123456789ABCDEF";
-            for (wchar_t ch : value)
-            {
-                if ((ch >= L'0' && ch <= L'9') || (ch >= L'A' && ch <= L'Z')
-                    || (ch >= L'a' && ch <= L'z') || ch == L'-' || ch == L'_' || ch == L'.' || ch == L'~')
-                {
-                    result.push_back(static_cast<char>(ch));
-                }
-                else
-                {
-                    unsigned int code = static_cast<unsigned int>(ch);
-                    result.push_back('%');
-                    result.push_back(hex[(code >> 4) & 0xF]);
-                    result.push_back(hex[code & 0xF]);
-                }
-            }
-            return result;
-        }
-
-        std::string FindJsonString(std::string const& json, std::string const& key)
-        {
-            auto marker = json.find(key);
-            if (marker == std::string::npos)
-            {
-                return {};
-            }
-            marker += key.size();
-            while (marker < json.size() && json[marker] != ':')
-            {
-                ++marker;
-            }
-            if (marker >= json.size())
-            {
-                return {};
-            }
-            ++marker;
-            while (marker < json.size() && (json[marker] == ' ' || json[marker] == '\t'
-                || json[marker] == '\r' || json[marker] == '\n'))
-            {
-                ++marker;
-            }
-            if (marker >= json.size() || json[marker] != '"')
-            {
-                return {};
-            }
-            ++marker;
-            std::string result;
-            while (marker < json.size() && json[marker] != '"')
-            {
-                if (json[marker] == '\\' && marker + 1 < json.size())
-                {
-                    ++marker;
-                }
-                result.push_back(json[marker]);
-                ++marker;
-            }
-            return result;
-        }
         std::string FindJsonNumber(std::string const& json, std::string const& key)
         {
             auto marker = json.find(key);
@@ -305,17 +230,13 @@ namespace Metadata
         try
         {
             response = HttpHelper::GetText(url, headers);
-            WriteDiag(L"sgdb: ResolveSteamAppId url=" + url + L" responseLen=" + std::to_wstring(response.size())
-                + L" body=" + std::wstring(response.begin(), response.end()));
         }
         catch (std::exception const& e)
         {
-            WriteDiag(L"sgdb: ResolveSteamAppId EXCEPTION url=" + url + L" msg=" + std::wstring(e.what(), e.what() + strlen(e.what())));
             return {};
         }
         catch (...)
         {
-            WriteDiag(L"sgdb: ResolveSteamAppId UNKNOWN EXCEPTION url=" + url);
             return {};
         }
         auto idStr = FindJsonNumber(response, "\"id\"");
@@ -333,18 +254,13 @@ namespace Metadata
         try
         {
             response = HttpHelper::GetText(url, {});
-            WriteDiag(L"sgdb: FetchSteamDescription appid=" + steamAppId
-                + L" responseLen=" + std::to_wstring(response.size()));
         }
         catch (std::exception const& e)
         {
-            WriteDiag(L"sgdb: FetchSteamDescription EXCEPTION appid=" + steamAppId
-                + L" msg=" + std::wstring(e.what(), e.what() + strlen(e.what())));
             return {};
         }
         catch (...)
         {
-            WriteDiag(L"sgdb: FetchSteamDescription UNKNOWN EXCEPTION appid=" + steamAppId);
             return {};
         }
         // 优先简体中文 short_description
@@ -370,16 +286,13 @@ namespace Metadata
         try
         {
             response = HttpHelper::GetText(url, headers);
-            WriteDiag(L"sgdb: FetchCovers url=" + url + L" responseLen=" + std::to_wstring(response.size()));
         }
         catch (std::exception const& e)
         {
-            WriteDiag(L"sgdb: FetchCovers EXCEPTION url=" + url + L" msg=" + std::wstring(e.what(), e.what() + strlen(e.what())));
             return {};
         }
         catch (...)
         {
-            WriteDiag(L"sgdb: FetchCovers UNKNOWN EXCEPTION url=" + url);
             return {};
         }
         return ParseAssetArray(response);
@@ -398,16 +311,13 @@ namespace Metadata
         try
         {
             response = HttpHelper::GetText(url, headers);
-            WriteDiag(L"sgdb: FetchBackgrounds url=" + url + L" responseLen=" + std::to_wstring(response.size()));
         }
         catch (std::exception const& e)
         {
-            WriteDiag(L"sgdb: FetchBackgrounds EXCEPTION url=" + url + L" msg=" + std::wstring(e.what(), e.what() + strlen(e.what())));
             return {};
         }
         catch (...)
         {
-            WriteDiag(L"sgdb: FetchBackgrounds UNKNOWN EXCEPTION url=" + url);
             return {};
         }
         return ParseAssetArray(response);

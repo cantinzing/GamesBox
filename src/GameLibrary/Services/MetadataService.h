@@ -21,9 +21,14 @@ namespace Services
             Metadata::SteamGridDbProvider* steamGridDb,
             std::wstring const& dataDirectory);
 
-        std::wstring const& AssetDirectory(int64_t gameId) const;
         // 确保游戏素材缓存目录存在并返回路径
         std::wstring EnsureAssetDirectory(int64_t gameId) const;
+        // 删除该游戏的素材缓存目录（删游戏时必须调用，否则图片永久残留）
+        void RemoveAssetDirectory(int64_t gameId) const;
+        // 回收孤儿素材目录（目录名即 gameId，凡不在 liveGameIds 里的整目录删除）。
+        // 用于清理两类垃圾：① 旧版本删游戏时从不清理缓存、遗留至今的目录；
+        // ② 删游戏途中进程被强杀、没走完清理。只认纯数字目录，其它内容一律不动。
+        void PruneOrphanAssetDirectories(std::vector<int64_t> const& liveGameIds) const;
 
         // fetch_metadata：按名称/Provider 在线抓取简介 + 封面/背景候选
         Core::MetadataResult FetchMetadata(Core::Game const& game) const;

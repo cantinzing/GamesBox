@@ -217,6 +217,7 @@
     </ClInclude>
     <ClInclude Include="Core\Models.h" />
     <ClInclude Include="Core\Normalization.h" />
+    <ClInclude Include="Core\TextUtil.h" />
     <ClInclude Include="Sources\GameSourceAdapter.h" />
     <ClInclude Include="Sources\SteamSourceAdapter.h" />
     <ClInclude Include="Sources\EpicSourceAdapter.h" />

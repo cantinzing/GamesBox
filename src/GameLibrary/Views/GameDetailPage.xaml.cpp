@@ -45,26 +45,6 @@ namespace winrt::GameLibrary::implementation
 {
     namespace
     {
-        void WriteDiag(std::wstring const& msg)
-        {
-            try
-            {
-                std::wstring out = L"[DIAG] " + msg + L"\r\n";
-                HANDLE h = CreateFileW(L"C:\\Users\\canti\\AppData\\Local\\Temp\\opencode\\diag.log",
-                    GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (h != INVALID_HANDLE_VALUE)
-                {
-                    SetFilePointer(h, 0, nullptr, FILE_END);
-                    DWORD written = 0;
-                    WriteFile(h, out.c_str(), static_cast<DWORD>(out.size() * sizeof(wchar_t)), &written, nullptr);
-                    CloseHandle(h);
-                }
-            }
-            catch (...)
-            {
-            }
-        }
-
         struct UiDispatcherAwaiter
         {
             winrt::Microsoft::UI::Dispatching::DispatcherQueue queue;
@@ -711,7 +691,7 @@ namespace winrt::GameLibrary::implementation
         auto& services = Services::AppServices::Instance();
         if (services.Initialized())
         {
-            services.Games().DeleteGame(m_gameId);
+            services.DeleteGame(m_gameId);
         }
         Frame().GoBack();
     }
@@ -824,9 +804,7 @@ namespace winrt::GameLibrary::implementation
             }
             auto game = services.Games().GetGameById(m_gameId);
             std::wstring srcPath(file.Path());
-            WriteDiag(L"import: picked src=" + srcPath + L" kind=" + (kind == Core::ArtworkKind::Cover ? L"cover" : L"bg") + L" gameId=" + std::wstring(to_hstring(m_gameId)));
             auto localPath = services.Metadata().ImportLocalAsset(m_gameId, kind, srcPath);
-            WriteDiag(L"import: localPath=" + localPath + L" empty=" + (localPath.empty() ? L"yes" : L"no"));
             if (localPath.empty())
             {
                 co_return;
@@ -873,18 +851,14 @@ namespace winrt::GameLibrary::implementation
         }
         catch (winrt::hresult_error const& e)
         {
-            WriteDiag(L"FetchMetadata EXCEPTION " + std::wstring(winrt::to_hstring(e.message())));
             failed = true;
         }
-        catch (std::exception const& e)
+        catch (std::exception const&)
         {
-            char const* what = e.what();
-            WriteDiag(L"FetchMetadata STDEXCEPTION " + std::wstring(what, what + strlen(what)));
             failed = true;
         }
         catch (...)
         {
-            WriteDiag(L"FetchMetadata UNKNOWN EXCEPTION");
             failed = true;
         }
         co_await ResumeOnUi(uiQueue);
@@ -893,9 +867,6 @@ namespace winrt::GameLibrary::implementation
         {
             co_return;
         }
-        WriteDiag(L"fetch: covers=" + std::to_wstring(meta.Covers.size())
-            + L" backgrounds=" + std::to_wstring(meta.Backgrounds.size())
-            + L" descLen=" + std::to_wstring(meta.Description.size()));
 
         auto panel = StackPanel();
         panel.Spacing(12);
@@ -1061,7 +1032,6 @@ namespace winrt::GameLibrary::implementation
         }
         catch (winrt::hresult_error const& e)
         {
-            WriteDiag(L"FetchDialog EXCEPTION " + std::wstring(winrt::to_hstring(e.message())));
         }
     }
 
@@ -1125,9 +1095,6 @@ namespace winrt::GameLibrary::implementation
         Core::AssetCandidate const& candidate, winrt::Microsoft::UI::Xaml::FrameworkElement loadingOverlay)
     {
         auto keepAlive = get_strong();
-        WriteDiag(L"candidate: clicked gameId=" + std::to_wstring(gameId)
-            + L" kind=" + (kind == Core::ArtworkKind::Cover ? L"cover" : L"background")
-            + L" url=" + candidate.Url);
         // 在切到后台线程前捕获 UI 队列，避免后台线程 DispatcherQueue() 返回空导致 ResumeOnUi 不挂起
         auto uiQueue = this->DispatcherQueue();
         try
@@ -1139,19 +1106,15 @@ namespace winrt::GameLibrary::implementation
             co_await winrt::resume_background();
             auto localPath = services->Metadata().DownloadAsset(gameId, kind, candidate);
             co_await ResumeOnUi(uiQueue);
-            WriteDiag(L"candidate: download result localPath=" + localPath);
             if (loadingOverlay)
             {
                 loadingOverlay.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
             }
-            WriteDiag(L"candidate: step hide-overlay done");
             if (localPath.empty())
             {
                 co_return;
             }
-            WriteDiag(L"candidate: step getgame");
             auto g = services->Games().GetGameById(gameId);
-            WriteDiag(L"candidate: step getgame done id=" + std::to_wstring(g.Id));
             auto coverPath = g.CoverPath;
             auto bgPath = g.BackgroundPath;
             if (kind == Core::ArtworkKind::Cover)
@@ -1162,27 +1125,19 @@ namespace winrt::GameLibrary::implementation
             {
                 bgPath = localPath;
             }
-            WriteDiag(L"candidate: step updatedb");
             services->Games().UpdateGameDetails(gameId, g.Title, g.Description, g.Platform,
                 coverPath, bgPath);
-            WriteDiag(L"candidate: step loadgame");
             LoadGame();
-            WriteDiag(L"candidate: step loadgame done");
         }
         catch (winrt::hresult_error const& e)
         {
-            WriteDiag(L"candidate: EXCEPTION hr=0x"
-                + std::to_wstring(static_cast<uint32_t>(e.code()))
-                + L" msg=" + std::wstring(winrt::to_hstring(e.message())));
             if (loadingOverlay)
             {
                 loadingOverlay.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
             }
         }
-        catch (std::exception const& e)
+        catch (std::exception const&)
         {
-            char const* what = e.what();
-            WriteDiag(L"candidate: STD EXCEPTION msg=" + std::wstring(what, what + strlen(what)));
             if (loadingOverlay)
             {
                 loadingOverlay.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);

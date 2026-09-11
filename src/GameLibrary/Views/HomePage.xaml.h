@@ -44,7 +44,7 @@ namespace winrt::GameLibrary::implementation
             winrt::Windows::Foundation::IInspectable const& args);
         void StartCarouselTimer();
         void StopCarouselTimer();
-        winrt::Windows::Foundation::IAsyncAction LoadBackgroundAsync(std::wstring const& path, int64_t gameId);
+        winrt::Windows::Foundation::IAsyncAction LoadBackgroundAsync(std::wstring const& path);
 
         static winrt::hstring FormatRelativeTime(int64_t unixSeconds);
         static winrt::hstring FormatPlaytime(int64_t totalSeconds);

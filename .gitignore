@@ -34,6 +34,13 @@ out/
 # Test / log artifacts
 *.log
 
+# 重构/改版中途留下的备份文件
+# 历史上有 4 个 *.bak_roundfix 被提交进索引；gitignore 对已追踪文件无效，
+# 所以这里加规则只是防止将来再犯，存量必须靠 git rm --cached 清掉。
+*.bak_*
+*.bak
+*.orig
+
 # WorkBuddy / AI agent workspace（本地记忆、技能、临时脚本；机器本地，不共享）
 # 注意：opensource 分支的 .gitignore 还顺手删掉了下面「激活私钥」几行 ——
 # 那几行是 main 分支的生命线，同步时绝不能被覆盖掉。

@@ -5,49 +5,15 @@
 
 #include <fstream>
 
+#include "../Core/TextUtil.h"
+
 namespace Metadata
 {
+    // 共用实现见 Core/TextUtil.h（原先三处各复制了一份，函数体逐字相同）
+    using Core::FindJsonString;
+
     namespace
     {
-        std::string FindJsonString(std::string const& json, std::string const& key)
-        {
-            auto marker = json.find(key);
-            if (marker == std::string::npos)
-            {
-                return {};
-            }
-            marker += key.size();
-            while (marker < json.size() && json[marker] != ':')
-            {
-                ++marker;
-            }
-            if (marker >= json.size())
-            {
-                return {};
-            }
-            ++marker;
-            while (marker < json.size() && (json[marker] == ' ' || json[marker] == '\t'
-                || json[marker] == '\r' || json[marker] == '\n'))
-            {
-                ++marker;
-            }
-            if (marker >= json.size() || json[marker] != '"')
-            {
-                return {};
-            }
-            ++marker;
-            std::string result;
-            while (marker < json.size() && json[marker] != '"')
-            {
-                if (json[marker] == '\\' && marker + 1 < json.size())
-                {
-                    ++marker;
-                }
-                result.push_back(json[marker]);
-                ++marker;
-            }
-            return result;
-        }
 
         std::wstring EscapedBody(std::wstring const& title)
         {
