@@ -292,6 +292,20 @@
   <ItemGroup>
     <Manifest Include="app.manifest" />
   </ItemGroup>
+  <!--
+    Application icon.  Compiled into the exe as PE resources (RT_GROUP_ICON +
+    RT_ICON) so Explorer / taskbar / shortcuts show the app logo.
+
+    It has to live in THIS project, not in GameLibrary.Package: the MSIX package
+    reads its logo from Package.appxmanifest -> Assets\*.png, while the portable
+    zip and the Inno Setup install just run GameLibrary.exe.  Without an icon
+    resource in the exe those two show the blank default icon.
+    See GameLibrary.rc for the full explanation.
+  -->
+  <ItemGroup>
+    <ResourceCompile Include="GameLibrary.rc" />
+    <Image Include="GameLibrary.ico" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />

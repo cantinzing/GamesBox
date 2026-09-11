@@ -1,0 +1,25 @@
+// GameLibrary.rc -- application icon resource for the unpackaged builds.
+//
+// WHY THIS FILE EXISTS
+//   Explorer, the taskbar, Alt+Tab, the Start Menu and every .lnk shortcut read
+//   the app icon from the EXECUTABLE ITSELF (PE resources RT_GROUP_ICON +
+//   RT_ICON).  They never look at the MSIX Package.appxmanifest, nor at the
+//   loose PNG files under src/GameLibrary.Package/Assets/.
+//
+//   The MSIX package gets its logo from Package.appxmanifest -> Assets\*.png,
+//   so the Store / sideload build always looked right.  The portable zip and the
+//   Inno Setup install run GameLibrary.exe directly, and that exe simply had no
+//   icon resource -- which is why both showed the blank default icon while the
+//   MSIX tiles did not.
+//
+//   Keeping the resource here (in the app project, not the packaging project)
+//   is what makes the icon travel with the exe into all three artifacts.
+//
+// NOTE: keep this file ASCII-only.  rc.exe reads it using the system code page
+//       unless a BOM is present, so non-ASCII text here is a portability trap.
+
+#define IDI_APPICON 101
+
+// Lowest-numbered icon group in the exe becomes the default shell icon, so a
+// single group with a full set of sizes inside GameLibrary.ico is all we need.
+IDI_APPICON ICON "GameLibrary.ico"
