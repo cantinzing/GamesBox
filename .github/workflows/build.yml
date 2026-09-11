@@ -72,24 +72,27 @@ jobs:
       - name: Build sideload MSIX
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:WindowsAppSDKSelfContained=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:AppxBundlePlatforms=x64 /p:WindowsAppSDKSelfContained=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\AppPackages" /m
           if ($LASTEXITCODE -ne 0) { throw "Sideload MSIX build failed, exit code $LASTEXITCODE" }
 
       # 2) Store bundle (unsigned .msixbundle for Microsoft Partner Center; Store re-signs it) —— 框架依赖
       - name: Build store bundle
         shell: powershell
         run: |
-          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained=false /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
+          msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:AppxBundlePlatforms=x64 /p:WindowsAppSDKSelfContained=false /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
           if ($LASTEXITCODE -ne 0) { throw "Store bundle build failed, exit code $LASTEXITCODE" }
 
       # 发布前自检（MSIX 侧）：确认调试符号没有混进包里。
-      # 这里必须【硬断言】而不是告警 —— 历史上恰恰缺了这一道，才让约 77 MB 的
-      # GameLibrary.pdb 悄悄进了包，MSIX 从 ~45 MB 膨胀到 ~122 MB（Store bundle 同步
-      # 受害），商店提交白胖一倍，而 CI 一路绿灯。便携 zip 之所以没这问题，是因为
-      # 打包脚本里另外显式删掉了 *.pdb/*.ilk；MSIX 这条链路没有。
-      # 机制与修法见 src/GameLibrary.Package/GameLibrary.Package.wapproj 里
-      # PackageOutputGroups 的注释（DesktopBridge 默认会用 DebugSymbolsProjectOutputGroup
-      # 去被引用工程收集链接器产出的 pdb）。
+      # 这一道是【硬断言】。注意历史：这里原先写着"77 MB 的 GameLibrary.pdb 混进包，
+      # 把 MSIX 从 45 MB 撑到 122 MB"—— 那个归因是【错的】，实测已推翻：
+      #   * 应用包本体一直只有 ~1.7 MB（26 个条目，最大的是 GameLibrary.exe 1.7 MB）；
+      #   * pdb 确实会被复制到 wapproj 的中间目录 bin\...\GameLibrary.pdb，但从未进入
+      #     .msix —— 修复前后 artifact 体积逐字节相同（122.1 MB）就是证据；
+      #   * 那 122 MB 的真身是 wapproj 的 SideloadOnly 构建为 x64/win32/x86/ARM/ARM64
+      #     五种架构各暂存的一份 WindowsAppRuntime + VCLibs（约 118 MB），见下方
+      #     "Prune appx dependencies" 步骤。
+      # 断言本身仍然有价值（它证明"包里没有调试符号"这个事实），所以保留。
+      # 便携 zip 之所以不受影响，是因为打包脚本里另外显式删掉了 *.pdb/*.ilk。
       - name: Verify MSIX payload (no debug symbols)
         shell: powershell
         run: |
@@ -109,8 +112,7 @@ jobs:
               $entries = $zip.Entries
 
               # Definitive signal: the linker's ProgramDatabaseFile (.pdb) and the
-              # incremental-link leftovers must never be in the package. This is the
-              # assertion that would have caught the 122 MB regression on day one.
+              # incremental-link leftovers must never be in the package.
               $bad = @($entries | Where-Object { $_.FullName -match '\.(pdb|ilk|ipdb|iobj|exp)$' })
               foreach ($b in $bad) {
                 $errors += ("{0}: contains debug file '{1}' ({2:N1} MB)" -f $pkg.Name, $b.FullName, ($b.Length / 1MB))
@@ -121,10 +123,10 @@ jobs:
               if ($pkg.Extension -eq '.msix') {
                 $totalMB = [math]::Round((($entries | Measure-Object Length -Sum).Sum) / 1MB, 1)
                 Write-Host ("  payload: {0} entries, {1} MB uncompressed" -f $entries.Count, $totalMB)
-                # Size is a symptom, not the root cause, so warn instead of failing on
-                # a threshold we cannot pin exactly ahead of time.
+                # Size is a symptom, not a root cause; warn instead of failing on a
+                # threshold we cannot pin exactly ahead of time.
                 if ($totalMB -gt 64) {
-                  Write-Host ("::warning::{0}: uncompressed payload is {1} MB - debug symbols may be back in the package" -f $pkg.Name, $totalMB)
+                  Write-Host ("::warning::{0}: uncompressed payload is {1} MB - the app package is expected to stay small" -f $pkg.Name, $totalMB)
                 }
                 if (-not ($entries | Where-Object { $_.FullName -eq 'resources.pri' })) {
                   $errors += ("{0}: resources.pri is missing from the package (WinUI cannot resolve themeresources)" -f $pkg.Name)
@@ -143,6 +145,59 @@ jobs:
             throw "MSIX payload verification failed"
           }
           Write-Host "MSIX payload verification passed: no debug symbols; resources.pri present."
+
+      # 发布前自检（打包布局）：把 AppPackages / StorePackages 里暂存的依赖包裁到
+      # 【受支持的架构】。这是 122 MB 问题的真正修法。
+      # 机制：wapproj 的 SideloadOnly 构建会为 x64 / win32 / x86 / ARM / ARM64
+      # 各暂存一份 Microsoft.WindowsAppRuntime.1.7.msix 与 Microsoft.VCLibs（合计
+      # 约 118 MB），供"任意架构的机器离线侧载"。而本应用只出 x64
+      # （Platform=x64、/MACHINE:X64、包名 _x64），x86/ARM/ARM64 那三份永远装不上，
+      # 只会把 artifact 从 ~32 MB 撑到 ~122 MB。
+      # 使用显式裁剪而不是只依赖 AppxBundlePlatforms：后者是"请求 MSBuild 别这么做"，
+      # 前者是"结果无论如何都只有 x64"，并且自带事后断言，不靠猜。
+      - name: Prune appx dependencies to x64
+        shell: powershell
+        run: |
+          $keep = 'x64'
+          $roots = @("$env:GITHUB_WORKSPACE\AppPackages", "$env:GITHUB_WORKSPACE\StorePackages")
+          $pruned = 0
+          $kept = 0
+          foreach ($root in $roots) {
+            if (-not (Test-Path $root)) { continue }
+            $deps = @(Get-ChildItem $root -Recurse -Directory -Filter 'Dependencies' -ErrorAction SilentlyContinue)
+            foreach ($dep in $deps) {
+              foreach ($arch in (Get-ChildItem $dep.FullName -Directory)) {
+                if ($arch.Name -ieq $keep) { $kept++; continue }
+                $mb = [math]::Round(((Get-ChildItem $arch.FullName -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+                Write-Host ("prune: {0} ({1} MB)" -f $arch.FullName, $mb)
+                Remove-Item $arch.FullName -Recurse -Force
+                $pruned++
+              }
+            }
+          }
+          if ($kept -eq 0) { throw "No x64 dependency folder found; the packaging layout changed and this step would be blind" }
+          Write-Host ("pruned {0} unsupported-arch dependency folders, kept {1} x64 folder(s)" -f $pruned, $kept)
+
+          # Post-condition: nothing but x64 may remain. Fail loudly otherwise, so a
+          # future MSBuild change cannot silently re-inflate the artifacts.
+          $stray = @()
+          foreach ($root in $roots) {
+            if (-not (Test-Path $root)) { continue }
+            foreach ($dep in (Get-ChildItem $root -Recurse -Directory -Filter 'Dependencies' -ErrorAction SilentlyContinue)) {
+              $stray += @(Get-ChildItem $dep.FullName -Directory | Where-Object { $_.Name -ine 'x64' })
+            }
+          }
+          if ($stray.Count -gt 0) {
+            $stray | ForEach-Object { Write-Host ("::error::unsupported dependency folder still present: {0}" -f $_.FullName) }
+            throw "Dependency pruning failed"
+          }
+
+          foreach ($root in $roots) {
+            if (-not (Test-Path $root)) { continue }
+            $mb = [math]::Round(((Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+            Write-Host ("staged output {0}: {1} MB" -f $root, $mb)
+            if ($mb -gt 64) { Write-Host ("::warning::{0} is still {1} MB after pruning" -f $root, $mb) }
+          }
 
       # 3) 便携版 / setup.exe 的来源：【自包含】构建。
       #    必须排在两个 MSIX 构建【之后】—— 三者共用同一个 OutDir，

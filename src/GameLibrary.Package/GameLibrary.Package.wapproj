@@ -56,7 +56,7 @@
   </PropertyGroup>
 
   <!-- ==========================================================================
-       从打包负载里剔除调试符号（.pdb）。
+       从打包负载里剔除调试符号（.pdb）——【防御性】设置，不是某个体积问题的解药。
 
        背景：Microsoft.DesktopBridge.props 里定义了
 
@@ -71,16 +71,25 @@
            <DebugSymbolsProjectOutputGroupOutput
              Include="@(Link->MetaData('ProgramDatabaseFile')->FullPath()->Distinct())" />
 
-       于是 GameLibrary.pdb 就这样被顺手收进 payload —— 实测它约 77 MB，是 MSIX
-       从 ~45 MB 膨胀到 ~122 MB 的唯一原因（同样拖累 Store bundle）。便携 zip 之所以
-       正常，是因为打包脚本里另外显式删掉了 *.pdb/*.ilk。MSIX 这边没有这道工序。
+       也就是说，这个钩子【有能力】把 GameLibrary.pdb 收进 payload。
 
-       包里本来就不需要符号（AppxSymbolPackageEnabled 已经是 false），所以在这里
-       覆盖 PackageOutputGroups，把两个 DebugSymbols* 组摘掉即可。
+       但请勿沿用一条已被实测推翻的旧结论：曾经把"MSIX ~122 MB"归因于此，说 pdb 把包
+       从 ~45 MB 撑到 ~122 MB。**那是错的。** 实测（2026-09-11，解剖 CI artifact）：
+         * 应用包本体一直是 ~1.7 MB（26 条目，最大者 GameLibrary.exe 1.7 MB，无 pdb）；
+         * 加不加这段覆盖，artifact 体积逐字节相同（122.1 MB）——说明 pdb 从未进包；
+         * 真正的 122 MB 是 wapproj 的 SideloadOnly 构建为 x64/win32/x86/ARM/ARM64
+           各暂存的一份 WindowsAppRuntime + VCLibs（约 118 MB），见
+           .github/workflows/build.yml 的 "Prune appx dependencies to x64" 步骤。
+       pdb 确实会被复制进 wapproj 的中间目录 bin\...\GameLibrary.pdb（正常行为，来自
+       copy-local），但打包阶段不会把它收进 .msix。
+
+       那为什么还留着这段覆盖？因为它是【廉价的保险】：包里本来就不需要符号
+       （AppxSymbolPackageEnabled 已是 false），而不同 VS / SDK 版本的打包管道对
+       DebugSymbols* 组的处理并不一致。留着它，排除一种将来可能复发的失败模式。
 
        注意：其余各组的顺序与内容保持原样 —— 它们才是真正的负载（.exe、
        copy-local DLL、.pri、content）。这份覆盖写在 props 之后，因此生效。
-       不要改成"构建时不产 pdb"：那会连本机调试也一起废掉，且治标不治本。
+       不要改成"构建时不产 pdb"：那会连本机调试也一起废掉。
        ========================================================================== -->
   <PropertyGroup>
     <PackageOutputGroups>DesktopBridgeCopyLocalOutputGroup;DesktopBridgeComFilesOutputGroup;BuiltProjectOutputGroup;GetCopyToOutputDirectoryItems;SatelliteDllsProjectOutputGroup;SatelliteDllsProjectOutputGroupDependencies;ContentFilesProjectOutputGroup;SGenFilesOutputGroup;</PackageOutputGroups>
