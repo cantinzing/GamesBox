@@ -82,6 +82,68 @@ jobs:
           msbuild src\GameLibrary.Package\GameLibrary.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Always /p:WindowsAppSDKSelfContained=false /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$env:GITHUB_WORKSPACE\StorePackages" /m
           if ($LASTEXITCODE -ne 0) { throw "Store bundle build failed, exit code $LASTEXITCODE" }
 
+      # 发布前自检（MSIX 侧）：确认调试符号没有混进包里。
+      # 这里必须【硬断言】而不是告警 —— 历史上恰恰缺了这一道，才让约 77 MB 的
+      # GameLibrary.pdb 悄悄进了包，MSIX 从 ~45 MB 膨胀到 ~122 MB（Store bundle 同步
+      # 受害），商店提交白胖一倍，而 CI 一路绿灯。便携 zip 之所以没这问题，是因为
+      # 打包脚本里另外显式删掉了 *.pdb/*.ilk；MSIX 这条链路没有。
+      # 机制与修法见 src/GameLibrary.Package/GameLibrary.Package.wapproj 里
+      # PackageOutputGroups 的注释（DesktopBridge 默认会用 DebugSymbolsProjectOutputGroup
+      # 去被引用工程收集链接器产出的 pdb）。
+      - name: Verify MSIX payload (no debug symbols)
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          $pkgs = @()
+          foreach ($dir in @("$env:GITHUB_WORKSPACE\AppPackages", "$env:GITHUB_WORKSPACE\StorePackages")) {
+            if (Test-Path $dir) { $pkgs += Get-ChildItem $dir -Recurse -File -Include *.msix, *.msixbundle }
+          }
+          if ($pkgs.Count -eq 0) { throw "No .msix/.msixbundle was produced under AppPackages / StorePackages" }
+
+          $errors = @()
+          foreach ($pkg in $pkgs) {
+            Write-Host ("Checking {0} ({1:N1} MB)" -f $pkg.Name, ($pkg.Length / 1MB))
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+            try {
+              $entries = $zip.Entries
+
+              # Definitive signal: the linker's ProgramDatabaseFile (.pdb) and the
+              # incremental-link leftovers must never be in the package. This is the
+              # assertion that would have caught the 122 MB regression on day one.
+              $bad = @($entries | Where-Object { $_.FullName -match '\.(pdb|ilk|ipdb|iobj|exp)$' })
+              foreach ($b in $bad) {
+                $errors += ("{0}: contains debug file '{1}' ({2:N1} MB)" -f $pkg.Name, $b.FullName, ($b.Length / 1MB))
+              }
+
+              # A .msixbundle is a container of .msix files, so its own entry list is
+              # just inner packages - do not run the payload-level checks on it.
+              if ($pkg.Extension -eq '.msix') {
+                $totalMB = [math]::Round((($entries | Measure-Object Length -Sum).Sum) / 1MB, 1)
+                Write-Host ("  payload: {0} entries, {1} MB uncompressed" -f $entries.Count, $totalMB)
+                # Size is a symptom, not the root cause, so warn instead of failing on
+                # a threshold we cannot pin exactly ahead of time.
+                if ($totalMB -gt 64) {
+                  Write-Host ("::warning::{0}: uncompressed payload is {1} MB - debug symbols may be back in the package" -f $pkg.Name, $totalMB)
+                }
+                if (-not ($entries | Where-Object { $_.FullName -eq 'resources.pri' })) {
+                  $errors += ("{0}: resources.pri is missing from the package (WinUI cannot resolve themeresources)" -f $pkg.Name)
+                }
+                foreach ($e in ($entries | Sort-Object Length -Descending | Select-Object -First 8)) {
+                  Write-Host ("    {0,12:N0}  {1}" -f $e.Length, $e.FullName)
+                }
+              }
+            } finally {
+              $zip.Dispose()
+            }
+          }
+
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$_" }
+            throw "MSIX payload verification failed"
+          }
+          Write-Host "MSIX payload verification passed: no debug symbols; resources.pri present."
+
       # 3) 便携版 / setup.exe 的来源：【自包含】构建。
       #    必须排在两个 MSIX 构建【之后】—— 三者共用同一个 OutDir，
       #    自包含构建(/t:Rebuild)最后执行，保证被打包的就是自包含产物。
@@ -228,11 +290,15 @@ jobs:
           # to a warning: a payload without it looks perfectly healthy - it just never shows
           # a window.
 
-          # Debug junk that must not ship.
+          # Debug junk that must not ship. It is expected to exist in the build dir
+          # (the linker writes GameLibrary.pdb there); the question is whether each
+          # packaging path strips it. The portable zip strips it explicitly when
+          # copying files below, and the MSIX is checked by the dedicated
+          # "Verify MSIX payload" step. So here we only warn, to keep the fact visible.
           $junk = Get-ChildItem $buildDir -Include *.pdb, *.ilk -Recurse -ErrorAction SilentlyContinue
           if ($junk) {
             $mb = [math]::Round(($junk | Measure-Object Length -Sum).Sum / 1MB, 1)
-            $warnings += "Build dir contains $($junk.Count) debug files ($mb MB total); the packaging step excludes them"
+            $warnings += "Build dir contains $($junk.Count) debug files ($mb MB total); callers must strip these before shipping (see the portable copy step and the MSIX payload check)"
           }
 
           $warnings | ForEach-Object { Write-Host "::warning::$_" }

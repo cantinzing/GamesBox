@@ -54,6 +54,38 @@
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     <SkipUnionWinmd>true</SkipUnionWinmd>
   </PropertyGroup>
+
+  <!-- ==========================================================================
+       从打包负载里剔除调试符号（.pdb）。
+
+       背景：Microsoft.DesktopBridge.props 里定义了
+
+           <PackageOutputGroups>
+             ...;DebugSymbolsProjectOutputGroup;DebugSymbolsProjectOutputGroupDependencies;...
+           </PackageOutputGroups>
+
+       wapproj 会拿这份清单去被引用工程上挨个跑对应 target 来收集负载。而对原生
+       (C++) 工程，Microsoft.CppBuild.targets 的 DebugSymbolsProjectOutputGroup 返回
+       的正是链接器的 ProgramDatabaseFile：
+
+           <DebugSymbolsProjectOutputGroupOutput
+             Include="@(Link->MetaData('ProgramDatabaseFile')->FullPath()->Distinct())" />
+
+       于是 GameLibrary.pdb 就这样被顺手收进 payload —— 实测它约 77 MB，是 MSIX
+       从 ~45 MB 膨胀到 ~122 MB 的唯一原因（同样拖累 Store bundle）。便携 zip 之所以
+       正常，是因为打包脚本里另外显式删掉了 *.pdb/*.ilk。MSIX 这边没有这道工序。
+
+       包里本来就不需要符号（AppxSymbolPackageEnabled 已经是 false），所以在这里
+       覆盖 PackageOutputGroups，把两个 DebugSymbols* 组摘掉即可。
+
+       注意：其余各组的顺序与内容保持原样 —— 它们才是真正的负载（.exe、
+       copy-local DLL、.pri、content）。这份覆盖写在 props 之后，因此生效。
+       不要改成"构建时不产 pdb"：那会连本机调试也一起废掉，且治标不治本。
+       ========================================================================== -->
+  <PropertyGroup>
+    <PackageOutputGroups>DesktopBridgeCopyLocalOutputGroup;DesktopBridgeComFilesOutputGroup;BuiltProjectOutputGroup;GetCopyToOutputDirectoryItems;SatelliteDllsProjectOutputGroup;SatelliteDllsProjectOutputGroupDependencies;ContentFilesProjectOutputGroup;SGenFilesOutputGroup;</PackageOutputGroups>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>
     <PackageCertificateKeyFile>GameLibrary_TemporaryKey.pfx</PackageCertificateKeyFile>
