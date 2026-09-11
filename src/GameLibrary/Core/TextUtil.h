@@ -6,6 +6,10 @@
 // 三处各复制了一份（FindJsonString 三份、UrlEncode 两份，函数体逐字相同）。
 // 复制品一多就会出现「只改了一处」的隐性分叉，统一收在这里。
 
+// UrlEncode 需要 WideCharToMultiByte。生产代码里每个 .cpp 都先 include pch.h
+// （其中已有 windows.h），这里再写一次是为了让本头文件自给自足。
+#include <Windows.h>
+
 #include <string>
 
 namespace Core
@@ -54,30 +58,53 @@ namespace Core
         return result;
     }
 
-    // 百分号编码，返回 UTF-8 字节串（URL 本质就是字节流）。
-    // 不编码的字符集与 RFC 3986 的 unreserved 一致。
+    // 百分号编码，返回 UTF-8 字节串。不编码的字符集与 RFC 3986 的 unreserved 一致。
     //
-    // 注意：这里按 wchar_t 逐个字符处理，仅对 ASCII 输入正确 —— 非 ASCII（中日韩等）
-    // 会得到「单字符百分号」而不是 UTF-8 多字节序列。这是合并前就有的既有行为，
-    // 本次重构原样保留以免引入行为变化；如需支持中文检索词需另行改用
-    // WideCharToMultiByte(CP_UTF8) 后再按字节编码。
+    // 【为什么必须先转 UTF-8】百分号编码的定义域是【字节】，不是字符。旧实现直接遍历
+    // wchar_t 取低字节，非 ASCII 会被压成一个 %XX：
+    //     「中」U+4E2D -> 低字节 0x2D -> "%2D"        （错）
+    //     正确结果                  -> "%E4%B8%AD"    （UTF-8 三字节）
+    // 服务端按 UTF-8 解码时必然对不上，表现为「用中文检索词一个都搜不到」。
+    // 所以先 WideCharToMultiByte(CP_UTF8) 得到字节串，再逐字节编码。
     inline std::string UrlEncode(std::wstring const& value)
     {
         std::string result;
-        char const hex[] = "0123456789ABCDEF";
-        for (wchar_t ch : value)
+        if (value.empty())
         {
-            if ((ch >= L'0' && ch <= L'9') || (ch >= L'A' && ch <= L'Z')
-                || (ch >= L'a' && ch <= L'z') || ch == L'-' || ch == L'_' || ch == L'.' || ch == L'~')
+            return result;
+        }
+
+        // UTF-16 -> UTF-8。代理对（emoji 等）会变成 4 字节，交给系统转换即可。
+        int const utf8Length = ::WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
+            static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+        if (utf8Length <= 0)
+        {
+            return result;
+        }
+        std::string utf8(static_cast<size_t>(utf8Length), '\0');
+        // 用 &utf8[0] 而不是 utf8.data()：非 const 的 data() 重载是 C++17 才有的，
+        // 在 C++14 下它返回 const char*，这里需要一个可写缓冲。
+        ::WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()),
+            &utf8[0], utf8Length, nullptr, nullptr);
+
+        char const hex[] = "0123456789ABCDEF";
+        // 最坏情形是每个字节都编码成 3 个字符（"%XX"），一次备足避免反复扩容。
+        result.reserve(utf8.size() * 3);
+        // 必须是 unsigned char：带符号的 char 在 >= 0x80 时是负数，
+        // (code >> 4) & 0xF 会拿到错误的高位。
+        for (unsigned char byte : utf8)
+        {
+            if ((byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z')
+                || (byte >= 'a' && byte <= 'z')
+                || byte == '-' || byte == '_' || byte == '.' || byte == '~')
             {
-                result.push_back(static_cast<char>(ch));
+                result.push_back(static_cast<char>(byte));
             }
             else
             {
-                unsigned int code = static_cast<unsigned int>(ch);
                 result.push_back('%');
-                result.push_back(hex[(code >> 4) & 0xF]);
-                result.push_back(hex[code & 0xF]);
+                result.push_back(hex[(byte >> 4) & 0xF]);
+                result.push_back(hex[byte & 0xF]);
             }
         }
         return result;

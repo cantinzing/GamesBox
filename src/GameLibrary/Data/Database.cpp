@@ -196,6 +196,63 @@ namespace Data
         return message == nullptr ? std::string() : std::string(message);
     }
 
+    bool Database::EnsureSpaceReclamation()
+    {
+        if (m_handle == nullptr)
+        {
+            return false;
+        }
+
+        // auto_vacuum 的取值：0=NONE，1=FULL，2=INCREMENTAL。
+        // 2 才是我们想要的：删数据时不动，等我们显式要回收时才截断文件 ——
+        // 既不拖慢每条 DELETE，又能把空间还回去。
+        if (QueryString(L"PRAGMA auto_vacuum;") == L"2")
+        {
+            // 已是增量模式：顺手把老版本（从不回收）攒下的空闲页清一次。
+            ReclaimFreePages();
+            return false;
+        }
+
+        if (!Execute(L"PRAGMA auto_vacuum = 2;"))
+        {
+            return false;
+        }
+        // 对已经建过表的库，auto_vacuum 的改动要等一次 VACUUM 重建才会写进文件头，
+        // 否则这次设置等于没设。库很小（游戏库通常几百 KB 到几 MB），
+        // 且这条路径每个库一生只走一次，开销可以接受。
+        // 注意：VACUUM 不能在事务里执行 —— 本函数只在初始化阶段调用，无事务在飞。
+        Execute(L"VACUUM;");
+        ReclaimFreePages();
+        return true;
+    }
+
+    bool Database::ReclaimFreePages()
+    {
+        if (m_handle == nullptr)
+        {
+            return false;
+        }
+        // 注意：incremental_vacuum 是「【每一步】回收一页」的 pragma，不是一步到底。
+        // 这一点用 Execute()（只 step 一次）会踩坑 —— 实测一个 300 页的库删空后
+        // 只从 10006528 缩到 10002432 字节，正好 4096 = 一页，等于没回收。
+        // 必须一直 step 到 SQLITE_DONE，才能把整个 freelist 清掉。
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare16_v2(m_handle, L"PRAGMA incremental_vacuum;", -1, &stmt, nullptr) != SQLITE_OK)
+        {
+            return false;
+        }
+        // 每轮一页，给个上限兜底，避免万一不收敛时把调用线程卡死。
+        // 100 万页 ≈ 4 GB 空闲空间，正常库永远到不了。
+        int guard = 1000000;
+        int rc = SQLITE_ROW;
+        while (rc == SQLITE_ROW && guard-- > 0)
+        {
+            rc = sqlite3_step(stmt);
+        }
+        sqlite3_finalize(stmt);
+        return rc == SQLITE_DONE;
+    }
+
     sqlite3* Database::Handle() const
     {
         return m_handle;

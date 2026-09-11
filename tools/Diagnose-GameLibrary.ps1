@@ -18,7 +18,7 @@
       3. WindowsAppRuntime framework package presence.
       4. Launch test: runs GameLibrary.exe, waits, reports the process EXIT CODE
          (the silent-exit bug leaves the reason in the exit code).
-      4b. The app's own startup log (%LOCALAPPDATA%\GameCentral\startup.log) - it
+      4b. The app's own startup log (%LOCALAPPDATA%\GameLibrary\startup.log) - it
          records each startup phase, so it shows exactly where the app gave up.
       5. DLL load probe: loads every *.dll shipped next to the exe and reports
          which one cannot be loaded, and with which Win32 error.
@@ -264,10 +264,16 @@ if ($alive) {
 # ------------------------------------------------- 4b. app startup log
 Section "4b. APP STARTUP LOG (written by the app itself)"
 
-# GameLibrary appends a line per startup phase to %LOCALAPPDATA%\GameCentral\startup.log,
+# GameLibrary appends a line per startup phase to %LOCALAPPDATA%\GameLibrary\startup.log,
 # including on the failure paths. It is the single most useful artifact in this report:
 # it says exactly how far the app got before it gave up.
-$appLog = Join-Path $env:LOCALAPPDATA 'GameCentral\startup.log'
+# Builds from before the log/data directories were unified wrote it under GameCentral\,
+# so fall back to that path - this script must also work against an older install.
+$appLog = Join-Path $env:LOCALAPPDATA 'GameLibrary\startup.log'
+if (-not (Test-Path -LiteralPath $appLog)) {
+    $legacyLog = Join-Path $env:LOCALAPPDATA 'GameCentral\startup.log'
+    if (Test-Path -LiteralPath $legacyLog) { $appLog = $legacyLog }
+}
 if (Test-Path -LiteralPath $appLog) {
     $li = Get-Item -LiteralPath $appLog
     W ("Log file : " + $appLog)

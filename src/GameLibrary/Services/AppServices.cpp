@@ -218,7 +218,14 @@ namespace Services
         {
             m_metadata->RemoveAssetDirectory(gameId);
         }
-        return m_games->DeleteGame(gameId);
+        bool removed = m_games->DeleteGame(gameId);
+        if (removed && m_database != nullptr)
+        {
+            // 删游戏是一次释放量最大的动作（六张表的行 + 素材），
+            // 立刻回收一次，用户不至于觉得「删了十几个游戏，库文件还是那么大」。
+            m_database->ReclaimFreePages();
+        }
+        return removed;
     }
 
     bool AppServices::IsActiveSessionRunning() const
