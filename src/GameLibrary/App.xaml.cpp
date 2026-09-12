@@ -38,8 +38,6 @@ namespace
     // 两种情况下用户看到的都是「双击了，什么都没发生」。
     //
     // 日志位置：%LOCALAPPDATA%\GameLibrary\startup.log （与 games.db / assets 同一目录）
-    // 注：早期版本写在 %LOCALAPPDATA%\GameCentral\，两个目录名并存属历史遗留；
-    //     现已统一到 GameLibrary，旧目录由 RemoveLegacyLogDirectory() 清理。
     // 超过 256 KB 自动清空重写，避免无限增长。
     // ========================================================================
     void StartupLog(std::wstring const& message) noexcept
@@ -135,80 +133,10 @@ namespace
         ::MessageBoxW(nullptr, box.c_str(), L"GameLibrary", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
 
-    // 清掉早期版本的日志目录 %LOCALAPPDATA%\GameCentral\。
-    //
-    // 【不要改名】下面 `L"\\GameCentral"` 是**历史磁盘目录名**，不是产品名。
-    // 全项目把品牌统一成 GameLibrary 时务必别动这个字面量 —— 一旦改了，
-    // 这个函数就再也定位不到旧目录，老用户的 %LOCALAPPDATA%\GameCentral\
-    // 会永久残留（清理逻辑形同虚设）。tools/Diagnose-GameLibrary.ps1 里的
-    // legacyLog 回退同理。
-    //
-    // 那是最初把日志和数据分在两个目录名下留下的历史遗留（数据去了 GameLibrary）。
-    // 现在日志也统一到 GameLibrary，旧目录若不处理就会永远剩在那儿当垃圾。
-    //
-    // 【刻意保守】只在「目录里除我们自己写的 startup.log 之外再无他物」时才清理：
-    //   · 目录不存在           -> 直接返回（绝大多数情况）；
-    //   · 目录空（用户手工删过日志）-> 收掉空目录；
-    //   · 还有别的文件（同名目录被别的程序用着）-> 一律不动，只当没看见；
-    //   · 只有 startup.log     -> 删文件，再把空目录移除（非空/被占用时失败，无害）。
-    // 宁可留下一个空目录，也绝不误删别人的东西。
-    void RemoveLegacyLogDirectory() noexcept
-    {
-        try
-        {
-            wchar_t base[MAX_PATH]{};
-            if (::ExpandEnvironmentStringsW(L"%LOCALAPPDATA%", base, MAX_PATH) == 0)
-            {
-                return;
-            }
-            std::wstring dir = std::wstring(base) + L"\\GameCentral";
-
-            WIN32_FIND_DATAW entry{};
-            HANDLE find = ::FindFirstFileW((dir + L"\\*").c_str(), &entry);
-            if (find == INVALID_HANDLE_VALUE)
-            {
-                // 目录不存在是最常见的情形，直接收工。但如果是「目录在、里面是空的」
-                // （用户手工删过日志），也顺手把空目录收掉 —— 否则它会一直空着占位。
-                if (::GetLastError() == ERROR_FILE_NOT_FOUND &&
-                    ::GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES)
-                {
-                    ::RemoveDirectoryW(dir.c_str());
-                }
-                return;
-            }
-            bool onlyOurLog = true;
-            do
-            {
-                if (::wcscmp(entry.cFileName, L".") == 0 || ::wcscmp(entry.cFileName, L"..") == 0)
-                {
-                    continue;
-                }
-                if (::wcscmp(entry.cFileName, L"startup.log") != 0)
-                {
-                    onlyOurLog = false;
-                    break;
-                }
-            } while (::FindNextFileW(find, &entry));
-            ::FindClose(find);
-
-            if (!onlyOurLog)
-            {
-                return;
-            }
-            ::DeleteFileW((dir + L"\\startup.log").c_str());
-            ::RemoveDirectoryW(dir.c_str());
-        }
-        catch (...)
-        {
-        }
-    }
 }
 
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
-    // 先清掉早期版本留下的日志目录（只动我们自己的 startup.log，见函数注释）。
-    RemoveLegacyLogDirectory();
-
     {
         wchar_t self[MAX_PATH]{};
         ::GetModuleFileNameW(nullptr, self, MAX_PATH);
