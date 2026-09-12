@@ -363,6 +363,88 @@ jobs:
           # The script throws on failure; an uncaught throw fails this step.
           & "$ws\tools\Check-ExeIcon.ps1" -ExePath "$ws\src\GameLibrary\x64\Release\GameLibrary\GameLibrary.exe" -RequireIcoSource "$ws\src\GameLibrary\GameLibrary.ico"
 
+      # 瘦身：把 WindowsAppSDK 运行时的本地化资源裁到 en-us + zh-CN。
+      #
+      # 自包含产物（便携 zip / setup.exe 的来源）会带 86 个语言目录（af-ZA … zh-TW），
+      # 每个 2 个 .mui（Microsoft.ui.xaml.dll.mui + Microsoft.UI.Xaml.Phone.dll.mui），
+      # 合计 3.7 MB / 174 个文件。它们只翻译 **WinUI 框架内建**的文案（默认控件菜单项、
+      # 框架错误信息…），跟我们自己的界面文案毫无关系 —— 后者编译期内置在
+      # Services/Localization.cpp，resources.pri 也是我们自己的。
+      # Windows 按当前 UI 语言找 `<语言目录>\<dll>.mui`，找不到就回退 DLL 内嵌的
+      # 中立资源（英文），不报错、不崩；所以裁掉是安全的，留下 en-us 与 zh-CN 即可。
+      # MSIX 那两份是框架依赖，运行时由系统上的 WindowsAppRuntime 框架包提供，产物里
+      # 本来就没有这些目录，本步骤对它们无影响。
+      #
+      # 与 "Prune appx dependencies" 同样的思路：不做「请 MSBuild 别拷」的请求式配置，
+      # 而是在产物上确定性删除 + 事后断言，并且断言打在**最终交付物**上。
+      # 删除必须发生在 Zip portable 与 Build installer 之前 —— setup.exe 直接读同一个
+      # 构建目录并 recursesubdirs，裁一次两边都受益。
+      - name: Prune runtime localization to en-us + zh-CN
+        shell: powershell
+        run: |
+          $buildDir = "$env:GITHUB_WORKSPACE\src\GameLibrary\x64\Release\GameLibrary"
+          $keep = @('en-us', 'zh-CN')
+
+          # Mode guard: these language folders only exist in the self-contained layout.
+          # If this is not a self-contained payload, the assumption behind this step is
+          # gone - fail loudly instead of degrading into a step that never does anything.
+          if (-not (Test-Path (Join-Path $buildDir 'Microsoft.ui.xaml.dll'))) {
+            throw "Not a self-contained payload: $buildDir (no Microsoft.ui.xaml.dll). The localization layout this step prunes does not exist here, so the step would be blind"
+          }
+
+          # Only a top-level folder whose NAME looks like a BCP-47 tag AND whose CONTENTS
+          # are nothing but *.mui may be deleted. Anything else is reported and left
+          # alone, so a future layout change can never turn this into a wildcard delete.
+          $tagPattern = '^[a-z]{2,3}-[A-Za-z]{2,4}(-[A-Za-z]{2,})?$'
+          $candidates = @(Get-ChildItem $buildDir -Directory | Where-Object { $_.Name -match $tagPattern })
+          if ($candidates.Count -eq 0) {
+            throw "No language resource folder found under $buildDir - the WindowsAppSDK layout changed and this step would be blind"
+          }
+
+          $pruned  = 0
+          $freed   = [long]0
+          $skipped = @()
+          foreach ($dir in $candidates) {
+            $files = @(Get-ChildItem $dir.FullName -File -Recurse -Force)
+            if (@($files | Where-Object { $_.Extension -ine '.mui' }).Count -gt 0) {
+              $skipped += $dir.Name
+              continue
+            }
+            if ($keep -contains $dir.Name) { continue }
+            $freed += [long](($files | Measure-Object Length -Sum).Sum)
+            Remove-Item $dir.FullName -Recurse -Force
+            $pruned++
+          }
+
+          # Post-conditions, asserted on the payload that actually ships: what must stay
+          # is still there, what must go is gone, and not one payload file disappeared.
+          $errors = @()
+          foreach ($name in $keep) {
+            $d = Join-Path $buildDir $name
+            if (-not (Test-Path $d)) { $errors += "language folder that must be kept is gone: $name"; continue }
+            if (@(Get-ChildItem $d -File -Filter *.mui).Count -eq 0) { $errors += "kept language folder $name contains no .mui files" }
+          }
+          foreach ($must in @('GameLibrary.exe', 'resources.pri', 'Microsoft.ui.xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'sqlite3.dll', 'Views\SettingsPage.xbf')) {
+            if (-not (Test-Path (Join-Path $buildDir $must))) { $errors += "payload file disappeared during pruning: $must" }
+          }
+          $leftover = @(Get-ChildItem $buildDir -Directory |
+            Where-Object { $_.Name -match $tagPattern -and $keep -notcontains $_.Name -and $skipped -notcontains $_.Name })
+          foreach ($l in $leftover) { $errors += "language folder survived pruning: $($l.Name)" }
+
+          Write-Host ("pruned {0} language folders, freed {1} MB, kept {2}" -f $pruned, [math]::Round($freed / 1MB, 1), ($keep -join ', '))
+          if ($skipped.Count -gt 0) {
+            Write-Host ("::warning::left untouched because they are not pure .mui folders: {0}" -f ($skipped -join ', '))
+          }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$_" }
+            throw "Runtime localization pruning failed"
+          }
+
+          # Size is a warning only: the exact figure moves with the SDK version, so
+          # hard-coding a threshold here would kill builds for no reason.
+          $mb = [math]::Round(((Get-ChildItem $buildDir -Recurse -File -Force | Measure-Object Length -Sum).Sum) / 1MB, 1)
+          Write-Host ("self-contained payload is now {0} MB" -f $mb)
+
       # 打包便携版 zip。
       # 自包含产物已内置 WindowsAppSDK 运行时，因此【不再】随包附带 MSIX 框架包或
       # 运行时安装脚本 —— 解压即可运行，无需管理员权限。
