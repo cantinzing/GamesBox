@@ -16,6 +16,11 @@ namespace winrt::GameLibrary::implementation
         void OnPageLoaded(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
+        // 语言热切换：重刷静态文案 + 随来源/数据变化的动态文案。
+        // 本页挂在 MainWindow 的 ImportOverlayFrame 上（不在 ContentFrame 里），
+        // 由 MainWindow 的语言回调直接派发过来。
+        void ApplyLanguage();
+
         winrt::Windows::Foundation::IAsyncAction BrowseButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::Windows::Foundation::IAsyncAction ScanButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
@@ -37,6 +42,7 @@ namespace winrt::GameLibrary::implementation
         Core::GameSourceType CurrentSource() const;
         void CurrentSource(Core::GameSourceType value);
         void UpdateCount();
+        void RefreshSourceHint();
         winrt::Microsoft::UI::Xaml::UIElement BuildCandidateRow(Core::Installation const& candidate);
 
         Core::GameSourceType m_source = Core::GameSourceType::Local;

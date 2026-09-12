@@ -139,8 +139,8 @@ namespace winrt::GameLibrary::implementation
     {
         InitializeComponent();
         Loaded({ this, &ImportWizardPage::OnPageLoaded });
-        auto& loc = Services::Localization::Instance();
-        SourceLocalBtn().Content(box_value(hstring(loc.T(L"import.local"))));
+        // 文案统一交给 ApplyLanguage()（含 SourceLocalBtn：它的 Tag 被用来标记来源，
+        // 挂不了 i18n Tag，只能手动设）。
         CurrentSource(Core::GameSourceType::Local);
         Services::AttachScaleHover(SourceLocalBtn(), 1.05f);
         Services::AttachScaleHover(SourceSteamBtn(), 1.05f);
@@ -150,11 +150,38 @@ namespace winrt::GameLibrary::implementation
     void ImportWizardPage::OnPageLoaded(winrt::Windows::Foundation::IInspectable const&,
         winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        Services::Localization::Instance().LocalizeVisualTree(Content());
+        ApplyLanguage();
+    }
+
+    // 语言热切换入口（由 MainWindow 的语言回调派发到这里）。
+    // 本页挂在 MainWindow 的 ImportOverlayFrame 上，不在 ContentFrame 里 —— 页面一旦
+    // 创建就长期驻留（关掉弹窗只是改 Visibility），所以每次换语言都必须在这里把文案
+    // 重刷一遍，否则就得重启程序才见效。
+    void ImportWizardPage::ApplyLanguage()
+    {
+        auto& loc = Services::Localization::Instance();
+        // 静态文案：Tag 为 i18n:xxx / i18nph:xxx 的控件（ComboBox 的下拉项也在这里处理，
+        // 它们不在可视树里，靠 Tag 逐项翻译）
+        loc.LocalizeVisualTree(Content());
+        // 非 Tag 驱动的文案：来源按钮 + 来源提示（后者跟随当前来源变化）
+        SourceLocalBtn().Content(box_value(hstring(loc.T(L"import.local"))));
+        RefreshSourceHint();
+        UpdateCount();
+        // 未激活提示：没有激活时向导本来就不可用，这条状态就是它的主文案，得跟着语言走
         if (!Licensing::LicenseManager::IsActivated())
         {
-            StatusText().Text(L"导入功能需激活后使用，请前往「设置 → 软件激活」输入激活码。");
+            StatusText().Text(hstring(loc.T(L"import.statusNeedActivation")));
         }
+    }
+
+    // 来源提示随 m_source 变化，语言切换时也要按当前语言重设，故单独抽出来
+    void ImportWizardPage::RefreshSourceHint()
+    {
+        auto& loc = Services::Localization::Instance();
+        std::wstring const key = (m_source == Core::GameSourceType::Steam) ? L"import.hintSteam"
+            : (m_source == Core::GameSourceType::Epic) ? L"import.hintEpic"
+            : L"import.hintLocal";
+        SourceHintText().Text(hstring(loc.T(key)));
     }
 
     Core::GameSourceType ImportWizardPage::CurrentSource() const
@@ -189,13 +216,13 @@ namespace winrt::GameLibrary::implementation
             LocalOptionsPanel().Visibility(Visibility::Collapsed);
             FolderBox().IsEnabled(false);
             FolderBox().Text(L"");
-            SourceHintText().Text(hstring(Services::Localization::Instance().T(L"import.hintSteam")));
+            RefreshSourceHint();
             break;
         case Core::GameSourceType::Epic:
             LocalOptionsPanel().Visibility(Visibility::Collapsed);
             FolderBox().IsEnabled(false);
             FolderBox().Text(L"");
-            SourceHintText().Text(hstring(Services::Localization::Instance().T(L"import.hintEpic")));
+            RefreshSourceHint();
             break;
         default:
         {
@@ -205,7 +232,7 @@ namespace winrt::GameLibrary::implementation
             // 目录默认记录上一次选中的目录
             FolderBox().Text(hstring(services.Settings().GetString(L"import.lastLocalDir", L"")));
             ScanDepthBox().SelectedIndex(static_cast<int>(services.Settings().GetInt64(L"local.scan.depth", 3)) - 1);
-            SourceHintText().Text(hstring(Services::Localization::Instance().T(L"import.hintLocal")));
+            RefreshSourceHint();
             break;
         }
         }
@@ -375,7 +402,8 @@ namespace winrt::GameLibrary::implementation
         }
         catch (std::exception const& e)
         {
-            errorMsg = L"扫描异常：" + winrt::to_hstring(std::string(e.what()));
+            errorMsg = Services::Localization::Instance().T(L"import.statusScanError");
+            errorMsg += winrt::to_hstring(std::string(e.what()));
         }
 
         if (dispatcher)
@@ -403,7 +431,9 @@ namespace winrt::GameLibrary::implementation
                 std::wstring status = loc.T(L"import.statusFound", vars);
                 if (filteredCount > 0)
                 {
-                    status += L"（已过滤 " + std::to_wstring(filteredCount) + L" 个疑似非游戏文件）";
+                    std::unordered_map<std::wstring, std::wstring> filteredVars;
+                    filteredVars[L"n"] = std::to_wstring(filteredCount);
+                    status += loc.T(L"import.statusFiltered", filteredVars);
                 }
                 self->StatusText().Text(hstring(status));
             });
@@ -500,10 +530,11 @@ namespace winrt::GameLibrary::implementation
         auto keepAlive = get_strong();
         if (!Licensing::LicenseManager::IsActivated())
         {
+            auto& loc = Services::Localization::Instance();
             ContentDialog dlg;
-            dlg.Title(box_value(L"需要激活"));
-            dlg.Content(box_value(L"导入游戏功能需要激活后使用。\n请前往「设置 → 软件激活」输入激活码。"));
-            dlg.CloseButtonText(L"确定");
+            dlg.Title(box_value(hstring(loc.T(L"import.needActivationTitle"))));
+            dlg.Content(box_value(hstring(loc.T(L"import.needActivationBody"))));
+            dlg.CloseButtonText(hstring(loc.T(L"common.ok")));
             dlg.XamlRoot(XamlRoot());
             co_await dlg.ShowAsync();
             co_return;

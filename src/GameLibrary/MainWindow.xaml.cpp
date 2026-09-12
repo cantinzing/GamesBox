@@ -148,6 +148,15 @@ MainWindow::MainWindow()
                 {
                     winrt::get_self<winrt::GameLibrary::implementation::SettingsPage>(settings)->ApplyLanguage();
                 }
+                // 导入向导弹窗挂在独立的 ImportOverlayFrame 上，不在 ContentFrame 里，
+                // 上面那条分支永远够不到它 —— 不单独通知的话，它就只有等重启才换语言。
+                if (auto overlay = ImportOverlayFrame().Content())
+                {
+                    if (auto wizard = overlay.try_as<winrt::GameLibrary::ImportWizardPage>())
+                    {
+                        winrt::get_self<winrt::GameLibrary::implementation::ImportWizardPage>(wizard)->ApplyLanguage();
+                    }
+                }
             });
         LocalizeChrome();
         InitGamepadNavigator();

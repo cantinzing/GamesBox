@@ -363,6 +363,11 @@ namespace Services
                 {L"import.statusFound", L"{n} new candidates."},
                 {L"import.statusNoCandidates", L"No candidates to import; scan first."},
                 {L"import.statusImported", L"Imported {n} games."},
+                {L"import.statusNeedActivation", L"Importing requires activation. Enter your license key in Settings → Activation."},
+                {L"import.needActivationTitle", L"Activation required"},
+                {L"import.needActivationBody", L"Importing games requires activation.\nEnter your license key in Settings → Activation."},
+                {L"import.statusScanError", L"Scan failed: "},
+                {L"import.statusFiltered", L" (filtered {n} likely non-game files)"},
                 {L"import.selectAll", L"Select all"},
                 {L"import.invertSelection", L"Invert"},
 
@@ -643,6 +648,37 @@ namespace Services
                 if (!value.empty() && item.Content())
                 {
                     item.Content(winrt::box_value(winrt::hstring(value)));
+                }
+            }
+            else if (auto box = child.try_as<controls::ComboBox>())
+            {
+                // ComboBox 的项不是「可视树子节点」——容器要等下拉弹出时才实例化，
+                // 所以上面那套递归永远够不到 ComboBoxItem，XAML 里写再多 i18n Tag 也没用
+                // （表现就是：界面切到英文了，下拉项还是中文）。这里直接遍历 Items()，
+                // 按每项自己的 Tag 翻译，页面不必再手抄一份键列表。
+                auto items = box.Items();
+                bool localized = false;
+                for (uint32_t i = 0; i < items.Size(); ++i)
+                {
+                    auto item = items.GetAt(i).try_as<controls::ComboBoxItem>();
+                    if (!item)
+                    {
+                        continue;
+                    }
+                    auto value = apply(readTag(item));
+                    if (!value.empty() && item.Content())
+                    {
+                        item.Content(winrt::box_value(winrt::hstring(value)));
+                        localized = true;
+                    }
+                }
+                // 收起态显示的是「选中项内容」的快照（SelectionBoxItem 在选中那一刻算好），
+                // 改 Content 不会让它自己刷新 —— 借 SelectedIndex 走一个来回强制重算。
+                if (localized && box.SelectedIndex() >= 0)
+                {
+                    int const selected = box.SelectedIndex();
+                    box.SelectedIndex(-1);
+                    box.SelectedIndex(selected);
                 }
             }
             LocalizeVisualTree(child);

@@ -96,56 +96,14 @@ namespace winrt::GameLibrary::implementation
     void SettingsPage::OnPageLoaded(winrt::Windows::Foundation::IInspectable const&,
     winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        auto& loc = Services::Localization::Instance();
-        loc.LocalizeVisualTree(Content());
-        auto localizeBox = [&](winrt::Microsoft::UI::Xaml::Controls::ComboBox const& box,
-            std::vector<std::wstring> const& keys) {
-            if (box == nullptr)
-            {
-                return;
-            }
-            int sel = box.SelectedIndex();
-            for (uint32_t i = 0; i < box.Items().Size() && i < keys.size(); ++i)
-            {
-                if (auto item = box.Items().GetAt(i).try_as<winrt::Microsoft::UI::Xaml::Controls::ComboBoxItem>())
-                {
-                    item.Content(box_value(hstring(loc.T(std::wstring(keys[i])))));
-                }
-            }
-            if (sel >= 0)
-            {
-                box.SelectedIndex(-1);
-                box.SelectedIndex(sel);
-            }
-        };
-        localizeBox(ProviderBox(), { L"settings.provider.auto", L"settings.provider.igdb", L"settings.provider.sgdb" });
+        // 静态文案（ComboBox 的下拉项也在其中：LocalizeVisualTree 直接遍历 Items()
+        // 按各项自身的 i18n Tag 翻译，页面不必再手抄一份键列表）
+        Services::Localization::Instance().LocalizeVisualTree(Content());
     }
 
     void SettingsPage::ApplyLanguage()
     {
-        auto& loc = Services::Localization::Instance();
-        loc.LocalizeVisualTree(Content());
-        auto localizeBox = [&](winrt::Microsoft::UI::Xaml::Controls::ComboBox const& box,
-            std::vector<std::wstring> const& keys) {
-            if (box == nullptr)
-            {
-                return;
-            }
-            int sel = box.SelectedIndex();
-            for (uint32_t i = 0; i < box.Items().Size() && i < keys.size(); ++i)
-            {
-                if (auto item = box.Items().GetAt(i).try_as<winrt::Microsoft::UI::Xaml::Controls::ComboBoxItem>())
-                {
-                    item.Content(box_value(hstring(loc.T(std::wstring(keys[i])))));
-                }
-            }
-            if (sel >= 0)
-            {
-                box.SelectedIndex(-1);
-                box.SelectedIndex(sel);
-            }
-        };
-        localizeBox(ProviderBox(), { L"settings.provider.auto", L"settings.provider.igdb", L"settings.provider.sgdb" });
+        Services::Localization::Instance().LocalizeVisualTree(Content());
         UpdateAutoFetchToggle();
         PopulateSourceDetection();
     }

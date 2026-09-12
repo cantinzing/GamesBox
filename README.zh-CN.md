@@ -211,7 +211,8 @@ Get-AppxPackage *GameLibrary* | Remove-AppxPackage
   - 解压后直接双击 `GameLibrary.exe` 即可运行，**无需安装运行时、无需管理员权限**。包内已内置 Windows App SDK 运行时，并随包附带 `resources.pri`（WinUI 控件样式的资源索引，缺它会导致「双击没反应」）。适用于干净的 Windows 10 / 11。
   - 包内还附带 `Diagnose.bat`：万一在某台机器上打不开，双击它会生成 `Diagnose-Report.txt`（系统版本、产物新旧、进程退出码、逐个 DLL 的加载结果、应用事件日志、`resources.pri` 体检、启动日志），把这个文件发出来即可定位。
 - **GameLibrary-setup-win-x64**（传统安装向导 `setup.exe`）
-  - 双击运行安装向导，默认安装到 `%LOCALAPPDATA%\Programs\GameLibrary`（当前用户目录，**全程不触发 UAC 提权**），并在开始菜单 / 桌面创建当前用户级快捷方式。安装内容与自包含压缩包一致，安装后即可运行。
+  - 双击运行安装向导，默认安装到 `C:\Program Files\GameLibrary`（**全机安装，会弹出 UAC 请求管理员权限**，普通账户无法安装），并在所有用户的开始菜单 / 桌面创建快捷方式。安装内容与自包含压缩包一致，安装后即可运行。卸载同样需要管理员权限（从“设置 → 应用”里卸载即可）。
+  - 注意：应用数据（数据库 / 素材 / 日志）依然在 `%LOCALAPPDATA%\GameLibrary\`，按用户分开存放，不随安装位置走。
 - **GameLibrary-MSIX-x64**（侧载 MSIX）
   - 见上方“MSIX 侧载”流程。下载的压缩包解压后即为该流程里的 `AppPackages` 内容（含 `*.msix` 与 `Add-AppPackage.ps1`）。用于信任的签名证书 `GameLibrary_TemporaryKey.pfx`（空密码）**不在产物内**，需从仓库 `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` 获取并安装到“受信任的人”后再安装。
 - **GameLibrary-store-msixbundle**（商店提交包，未签名的 `.msixbundle`）
