@@ -87,6 +87,8 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template" Value="{StaticResource RoundedToggleButtonTemplate}" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="FocusVisualMargin" Value="-3" />
         </Style>
         <!-- glass 按钮：border-white/10 bg-white/5 圆角 8 -->
         <Style x:Key="SettingsGlassButtonStyle" TargetType="Button">
@@ -99,6 +101,8 @@
             <Setter Property="FontFamily" Value="Hanken Grotesk, Segoe UI" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="FocusVisualMargin" Value="-4" />
         </Style>
     </Page.Resources>
 

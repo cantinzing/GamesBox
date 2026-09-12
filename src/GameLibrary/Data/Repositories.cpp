@@ -5,7 +5,10 @@
 #include "Database.h"
 
 #include <algorithm>
+#include <ctime>
 #include <cwctype>
+#include <map>
+#include <utility>
 
 namespace Data
 {
@@ -481,6 +484,36 @@ namespace Data
             session.ManuallyEnded = statement.ResultInt64(4) != 0;
             session.DurationSeconds = statement.ResultInt64(5);
             result.push_back(std::move(session));
+        }
+        return result;
+    }
+
+    std::map<int64_t, Core::RecentPlayStats> GameRepository::GetRecentPlayStats(int days) const
+    {
+        std::map<int64_t, Core::RecentPlayStats> result;
+        if (days <= 0)
+        {
+            return result;
+        }
+
+        // cutoff 用【调用时刻】而不是「今天零点」：跨零点还在玩的会话才不会被漏掉。
+        int64_t const cutoff = static_cast<int64_t>(std::time(nullptr)) - static_cast<int64_t>(days) * 86400;
+
+        Statement statement;
+        if (!statement.Prepare(m_database,
+                L"SELECT game_id, SUM(duration_seconds), COUNT(*), MAX(started_unix) "
+                L"FROM play_sessions WHERE started_unix >= ?1 GROUP BY game_id;"))
+        {
+            return result;
+        }
+        statement.BindInt64(1, cutoff);
+        while (statement.Step())
+        {
+            Core::RecentPlayStats stats;
+            stats.RecentSeconds = statement.ResultInt64(1);
+            stats.RecentSessions = statement.ResultInt64(2);
+            stats.LastStartedUnix = statement.ResultInt64(3);
+            result[statement.ResultInt64(0)] = stats;
         }
         return result;
     }

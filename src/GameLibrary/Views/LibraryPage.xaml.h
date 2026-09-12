@@ -1,9 +1,11 @@
 ﻿#pragma once
 
 #include "../Core/Models.h"
+#include "../Services/GamepadNavigator.h"
 
 #include "LibraryPage.g.h"
 
+#include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 
 #include <string>
@@ -49,6 +51,9 @@ namespace winrt::GameLibrary::implementation
         void OnNavigatedTo(Microsoft::UI::Xaml::Navigation::NavigationEventArgs const& e);
         winrt::fire_and_forget Refresh();
 
+        // 手柄导航：返回 true 表示这次按键已被本页消化（MainWindow 不再兜底处理）。
+        bool HandleNavAction(Services::NavAction action);
+
     private:
         void OnPageLoaded(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
@@ -65,6 +70,10 @@ namespace winrt::GameLibrary::implementation
         winrt::Microsoft::UI::Xaml::UIElement BuildListRow(Core::Game const& game);
         void GameCard_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        // 卡片激活（鼠标点击 / 手柄 A 共用一条路）：管理模式是勾选，否则进详情页
+        void ActivateGameCard(int64_t gameId);
+        // 焦点元素对应的游戏 id；焦点不在游戏卡上（比如在工具栏）时返回 0
+        int64_t FocusedCardGameId(winrt::Microsoft::UI::Xaml::DependencyObject const& focused);
         void CardFavorite_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::Windows::Foundation::IAsyncAction DeleteGameAsync(int64_t gameId);

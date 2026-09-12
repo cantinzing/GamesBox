@@ -5,6 +5,7 @@
 #endif
 
 #include "../Services/AppServices.h"
+#include "../Services/GamepadFocus.h"
 #include "../Services/Localization.h"
 #include "../Services/VisualEffects.h"
 #include "../MainWindow.xaml.h"
@@ -42,11 +43,17 @@ namespace winrt::GameLibrary::implementation
     namespace
     {
         constexpr int kMaxCarousel = 12;
+        // 「最近经常玩」的观察窗口。窗口内玩过的游戏按下面的 score 排，
+        // 窗口外（或者从没玩过）的退到后面，只能靠补位进轨道。
+        constexpr int kRecentWindowDays = 14;
+        // 每次启动折算成多少秒并进「最近经常玩」的分数里 —— 光比总时长会让
+        // 「一次性肝 10 小时」压过「天天玩 20 分钟」，而后者显然更「经常」。
+        constexpr int64_t kSessionWeightSeconds = 30 * 60;
         // 封面尺寸与选中态参数（BuildCarouselCard 与 AnimateCoverState 共用，别再各写一份字面量）
         constexpr double kCoverNormal = 128.0;      // 未选中
         constexpr double kCoverSelected = 144.0;    // 选中
         constexpr double kCoverIdleOpacity = 0.8;   // 未选中封面压暗，突出选中那张
-        constexpr auto kCoverTransition = std::chrono::milliseconds(220);   // 选中态过渡时长
+        constexpr auto kCoverTransition = std::chrono::milliseconds(140);   // 选中态过渡时长
         // 进度条分母：100h（对齐 PLAYTIME_CAP_SEC）
         constexpr int64_t kPlaytimeCapSec = 100 * 3600;
 
@@ -214,21 +221,24 @@ namespace winrt::GameLibrary::implementation
         auto dq = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
 
         std::vector<Core::Game> games;
+        std::map<int64_t, Core::RecentPlayStats> recentStats;
         try
         {
             co_await winrt::resume_background();
             games = services.Games().GetAllGames();
+            recentStats = services.Games().GetRecentPlayStats(kRecentWindowDays);
         }
         catch (...)
         {
             co_return;
         }
-        dq.TryEnqueue([this, gen, games = std::move(games)]() {
+        dq.TryEnqueue([this, gen, games = std::move(games), recentStats = std::move(recentStats)]() {
             if (gen != m_refreshGen)
             {
                 return;
             }
             m_games = std::move(games);
+            m_recentStats = std::move(recentStats);
 
             // 空库：显示引导文案
             if (m_games.empty())
@@ -247,12 +257,12 @@ namespace winrt::GameLibrary::implementation
                 return;
             }
 
-            // 经常玩的优先，其余按入库序补位（排序规则见 BuildCarouselList）
+            // 最近经常玩的优先，其余按最近游玩 / 入库序补位（排序规则见 BuildCarouselList）
             auto carousel = BuildCarouselList();
             m_carousel = carousel;
             PopulateCarousel(carousel);
 
-            // 默认选中：轨道第一个 = 玩得最久的那款（从没玩过时就是最新入库的那款）
+            // 默认选中：轨道第一个 = 最近玩得最多（加上启动频率折算）的那款
             if (!carousel.empty())
             {
                 Core::Game featured = carousel.front();
@@ -263,17 +273,35 @@ namespace winrt::GameLibrary::implementation
 
     std::vector<Core::Game> HomePage::BuildCarouselList()
     {
-        // 排序：经常玩的排最前 —— 先比累计游玩时长（降序），时长相同再看最近一次游玩时间，
-        // 都相同（含从没玩过的）按 Id 降序（后入库的靠前）。未玩过的一律排在玩过的后面。
-        std::vector<Core::Game> sorted = m_games;
-        std::sort(sorted.begin(), sorted.end(), [](Core::Game const& a, Core::Game const& b) {
-            if (a.TotalPlaySeconds != b.TotalPlaySeconds)
+        // 「最近经常玩」排序。三级键，全部降序：
+        //   1. 窗口内玩过的排在没玩过的前面（RecentSessions > 0）；
+        //   2. 窗口内按 score = 窗口内时长 + 启动次数 × 30min 排 —— 兼顾「玩得多」和「开得勤」；
+        //   3. 窗口外退化成「最近玩过」优先，再看总时长；从没玩过的垫底，按 Id 降序（新入库靠前）。
+        // 注意 RecentSessions 为 0 不代表「从没玩过」—— 只是这 14 天没碰，两者在下面分开处理。
+        auto scoreOf = [this](Core::Game const& game) -> int64_t {
+            auto it = m_recentStats.find(game.Id);
+            if (it == m_recentStats.end())
             {
-                return a.TotalPlaySeconds > b.TotalPlaySeconds;
+                return 0;
+            }
+            return it->second.RecentSeconds + it->second.RecentSessions * kSessionWeightSeconds;
+        };
+
+        std::vector<Core::Game> sorted = m_games;
+        std::sort(sorted.begin(), sorted.end(), [&scoreOf](Core::Game const& a, Core::Game const& b) {
+            int64_t const scoreA = scoreOf(a);
+            int64_t const scoreB = scoreOf(b);
+            if (scoreA != scoreB)
+            {
+                return scoreA > scoreB;
             }
             if (a.LastPlayedUnixSeconds != b.LastPlayedUnixSeconds)
             {
                 return a.LastPlayedUnixSeconds > b.LastPlayedUnixSeconds;
+            }
+            if (a.TotalPlaySeconds != b.TotalPlaySeconds)
+            {
+                return a.TotalPlaySeconds > b.TotalPlaySeconds;
             }
             return a.Id > b.Id;
         });
@@ -363,6 +391,9 @@ namespace winrt::GameLibrary::implementation
         button.Tag(box_value(game.Id));
         button.UseSystemFocusVisuals(false);
         button.Click({ this, &HomePage::CarouselCard_Click });
+        // 手柄焦点落到哪张卡，哪张卡就是「选中」—— 卡片的白描边就是手柄光标，
+        // 这里必须跟着走，否则焦点在 A 卡、界面高亮 B 卡，用户根本不知道自己会启动哪个。
+        button.GotFocus({ this, &HomePage::CarouselCard_GotFocus });
         // 自定义模板：无 hover 白框（对齐 CardButtonTemplate 但去掉 PointerOver 白边），内容统一按圆角裁剪
         auto cardTemplate = Application::Current().Resources()
             .Lookup(box_value(L"CardButtonTemplateNoHover"))
@@ -447,8 +478,45 @@ namespace winrt::GameLibrary::implementation
         }
     }
 
-    void HomePage::CarouselTick(IInspectable const&, IInspectable const&)
+    void HomePage::CarouselCard_GotFocus(IInspectable const& sender, RoutedEventArgs const&)
     {
+        auto button = sender.try_as<Button>();
+        if (!button)
+        {
+            return;
+        }
+        // 跟着焦点把卡片滚进视野（手柄一路推过去时卡片会移出可见区）
+        try
+        {
+            button.StartBringIntoView();
+        }
+        catch (...)
+        {
+        }
+
+        auto id = unbox_value_or<int64_t>(button.Tag(), 0);
+        if (id == 0 || id == m_selectedId)
+        {
+            return;
+        }
+        for (auto const& game : m_games)
+        {
+            if (game.Id == id)
+            {
+                // 复用鼠标点击那条路：背景 / 标题 / 按钮 / 进度条一起换
+                SelectGame(game, false);
+                break;
+            }
+        }
+        // 用户手动选了，自动轮播重新计时，别下一秒就被抢走
+        if (m_carouselTimer.IsEnabled())
+        {
+            m_carouselTimer.Stop();
+            m_carouselTimer.Start();
+        }
+    }
+
+    void HomePage::CarouselTick(IInspectable const&, IInspectable const&)    {
         if (m_carousel.empty() || !m_autoPlay)
         {
             return;
@@ -690,6 +758,101 @@ namespace winrt::GameLibrary::implementation
             m_cardAnims.end());
         m_cardAnims.push_back(storyboard);
         storyboard.Begin();
+    }
+
+    // 把焦点放到当前选中的那张卡片上（手柄刚进页面时用）。
+    // 找不到选中卡就退而求其次给轨道里的第一张 —— 总比没有焦点强。
+    bool HomePage::FocusSelectedCard()
+    {
+        Button fallback{ nullptr };
+        for (auto const& child : RecentRail().Children())
+        {
+            auto button = child.try_as<Button>();
+            if (!button)
+            {
+                continue;
+            }
+            if (unbox_value_or<int64_t>(button.Tag(), 0) == 0)
+            {
+                continue;   // 「库」入口那块，不是游戏卡
+            }
+            if (fallback == nullptr)
+            {
+                fallback = button;
+            }
+            if (unbox_value_or<int64_t>(button.Tag(), 0) != m_selectedId)
+            {
+                continue;
+            }
+            if (button.Focus(FocusState::Programmatic))
+            {
+                try
+                {
+                    button.StartBringIntoView();
+                }
+                catch (...)
+                {
+                }
+                return true;
+            }
+            break;
+        }
+        if (fallback && fallback.Focus(FocusState::Programmatic))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    // 首页的手柄语义：
+    //   左右 → 换游戏（靠焦点在卡片之间移动 + CarouselCard_GotFocus 把焦点同步成选中态）
+    //   上下 → 在「轨道」和「Hero 按钮」之间换操作区
+    //   A    → 焦点在卡片上就启动；焦点在 Hero 按钮上就交给按钮自己的 Click
+    //   LB/RB → 顶栏 Games / Library（MainWindow 直接处理，不经过这里）
+    bool HomePage::HandleNavAction(Services::NavAction action)
+    {
+        using Services::NavAction;
+
+        // 空库：轨道里一张卡都没有，没有「游戏」可选，交给通用导航去够「导入游戏」按钮。
+        if (m_carousel.empty())
+        {
+            return false;
+        }
+
+        auto focused = Services::GamepadFocus::FocusedElement(Content());
+        bool const insidePage = Services::GamepadFocus::FocusInside(Content(), focused);
+
+        if (action == NavAction::Confirm)
+        {
+            if (!insidePage)
+            {
+                return false;   // 顶栏按钮 / 焦点还不在本页：让通用逻辑去 Invoke
+            }
+            if (focused == PlayButton() || focused == DetailButton() || focused == EmptyImportButton())
+            {
+                return false;   // 让按钮自己的 Click 跑，别抢
+            }
+            // 焦点在轨道卡片上 → A = 直接启动这一款（主机惯例，A 就是「进游戏」）。
+            // 想改成「打开详情页」的话，把下面这行换成 NavigateToGame(m_selectedId);
+            LaunchGame(m_selectedId);
+            return true;
+        }
+
+        if (!Services::GamepadFocus::IsDirectional(action))
+        {
+            return false;
+        }
+
+        // 一个焦点都没有（刚进页面、或轨道刚重建）→ 先把焦点放到选中那张卡上，
+        // 这次按键只当「叫醒」，不再叠一次移动。
+        if (focused == nullptr)
+        {
+            return FocusSelectedCard();
+        }
+
+        // 其余一律交给通用焦点导航：它会顺着真实布局找上下左右的下一个可聚焦元素，
+        // 顶栏按钮也在这个范围里，所以「从轨道往上推能到顶栏」是免费的。
+        return false;
     }
 
     void HomePage::Resume_Click(IInspectable const&, RoutedEventArgs const&)

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -232,7 +232,8 @@
     <ClInclude Include="Data\AppSettings.h" />
     <ClInclude Include="Data\CredentialStore.h" />
     <ClInclude Include="Services\AppServices.h" />                                                                     
-    <ClInclude Include="Services\GamepadNavigator.h" />                                                                
+    <ClInclude Include="Services\GamepadNavigator.h" />
+    <ClInclude Include="Services\GamepadFocus.h" />                                                                    
     <ClInclude Include="Services\Localization.h" />                                                                    
     <ClInclude Include="Services\SessionTracker.h" />                                                                  
 <ClInclude Include="Services\MetadataService.h" />
@@ -283,7 +284,8 @@
     <ClCompile Include="Data\AppSettings.cpp" />
     <ClCompile Include="Data\CredentialStore.cpp" />
     <ClCompile Include="Services\AppServices.cpp" />                                                                   
-    <ClCompile Include="Services\GamepadNavigator.cpp" />                                                              
+    <ClCompile Include="Services\GamepadNavigator.cpp" />
+    <ClCompile Include="Services\GamepadFocus.cpp" />                                                                  
     <ClCompile Include="Services\Localization.cpp" />                                                                  
     <ClCompile Include="Services\SessionTracker.cpp" />                                                                
     <ClCompile Include="Services\MetadataService.cpp" />

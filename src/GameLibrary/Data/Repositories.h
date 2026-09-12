@@ -2,6 +2,7 @@
 
 #include "../Core/Models.h"
 
+#include <map>
 #include <vector>
 
 namespace Data
@@ -38,6 +39,9 @@ namespace Data
         int64_t AddPlaySession(Core::PlaySession const& session);
         bool EndPlaySession(int64_t sessionId, int64_t endedUnix, int64_t durationSeconds);
         std::vector<Core::PlaySession> GetPlaySessions(int64_t gameId) const;
+        // 近 `days` 天的逐游戏游玩统计（key = gameId）。只返回窗口内玩过的游戏，
+        // 一次 GROUP BY 聚合搞定 —— 首页「最近经常玩」排序别按游戏逐个查会话。
+        std::map<int64_t, Core::RecentPlayStats> GetRecentPlayStats(int days) const;
         bool DeletePlaySession(int64_t sessionId);
         bool ClearPlayHistory(int64_t gameId);
         int64_t GameCount() const;

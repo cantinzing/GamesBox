@@ -82,6 +82,16 @@ namespace Core
         int64_t DurationSeconds = 0;
     };
 
+    // 某款游戏在最近一段时间窗口内的游玩统计（首页「最近经常玩」排序用）。
+    // 由 play_sessions 一次聚合查询得出，只有窗口内玩过的游戏才会有条目 ——
+    // 没条目 == 窗口内没玩过，不要拿 TotalPlaySeconds 去猜。
+    struct RecentPlayStats
+    {
+        int64_t RecentSeconds = 0;     // 窗口内累计时长
+        int64_t RecentSessions = 0;    // 窗口内启动次数
+        int64_t LastStartedUnix = 0;   // 窗口内最近一次启动时间
+    };
+
     struct MetadataCandidate
     {
         std::wstring ProviderName;

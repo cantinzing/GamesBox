@@ -27,6 +27,17 @@
             <SolidColorBrush x:Key="BorderSubtleBrush" Color="#33424655" />
             <SolidColorBrush x:Key="BorderSoftBrush" Color="#66424655" />
 
+            <!-- ===== 手柄 / 键盘焦点指示 =====
+                 本应用的按钮全部是自定义 ControlTemplate，模板里【没有 Focused 视觉状态】，
+                 而 Control.UseSystemFocusVisuals 默认是 false —— 结果就是：手柄把焦点挪到按钮上，
+                 界面一点反应都没有，用户完全不知道自己在哪。所以这里：
+                   1) 覆盖框架的系统焦点框画刷（系统焦点框由框架自己画，跟模板无关）；
+                   2) 在各共享样式里打开 UseSystemFocusVisuals（见 AppGlassButtonStyle 等）。
+                 系统焦点框是外框(Secondary)+内框(Primary)两层，这里只留内框（主题蓝紫），
+                 去掉默认的白色外框，免得跟卡片自己的白描边打架。 -->
+            <SolidColorBrush x:Key="FocusVisualPrimaryBrush" Color="#B4C5FF" />
+            <SolidColorBrush x:Key="FocusVisualSecondaryBrush" Color="#00000000" />
+
             <!-- 主按钮渐变（linear-gradient(90deg,#005AEE,#0052DC)） -->
             <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,0">
                 <GradientStop Color="#005AEE" Offset="0.0" />
@@ -144,6 +155,10 @@
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="FontWeight" Value="Medium" />
                 <Setter Property="Template" Value="{StaticResource RoundedButtonTemplate}" />
+                <!-- 手柄 / 键盘焦点框：模板里没画 Focused 状态，交给系统画（见 FocusVisualPrimaryBrush 处说明）。
+                     本样式是几乎所有按钮的基类，改这一处就等于全应用生效。 -->
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-4" />
             </Style>
 
             <ControlTemplate x:Key="RoundedButtonTemplate" TargetType="Button">
@@ -544,6 +559,8 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Margin" Value="2,2" />
                 <Setter Property="Template" Value="{StaticResource RoundedButtonTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
             </Style>
 
             <!-- 功能键：更宽 -->
@@ -676,6 +693,8 @@
                 <Setter Property="Height" Value="40" />
                 <Setter Property="CornerRadius" Value="20" />
                 <Setter Property="Template" Value="{StaticResource RoundedButtonTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-3" />
             </Style>
 
             <!-- 沉浸式顶部导航文字按钮（Games / Library） -->
@@ -690,6 +709,8 @@
                 <Setter Property="FontSize" Value="20" />
                 <Setter Property="FontWeight" Value="Medium" />
                 <Setter Property="Template" Value="{StaticResource RoundedButtonTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-3" />
             </Style>
 
             <!-- 玻璃卡片（.glass：145deg 微白渐变 + 发丝描边） -->
@@ -729,6 +750,8 @@
                 <Setter Property="FontFamily" Value="Hanken Grotesk, Segoe UI" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Template" Value="{StaticResource RoundedToggleButtonTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-3" />
             </Style>
 
             <!-- 游戏库 2:3 封面卡片选中描边（白色 + 柔光） -->
@@ -844,6 +867,8 @@
                 <Setter Property="FontFamily" Value="Hanken Grotesk, Segoe UI" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Template" Value="{StaticResource FavoriteToggleTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-3" />
             </Style>
 
             <!-- 卡片右上角收藏星标（未选中白字 40%，选中黄色胶囊） -->

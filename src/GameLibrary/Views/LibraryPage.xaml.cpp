@@ -6,6 +6,7 @@
 
 #include "../MainWindow.xaml.h"
 #include "../Services/AppServices.h"
+#include "../Services/GamepadFocus.h"
 #include "../Services/Localization.h"
 #include "../Services/VisualEffects.h"
 
@@ -893,7 +894,12 @@ namespace winrt::GameLibrary::implementation
 
     void LibraryPage::GameCard_Click(IInspectable const& sender, RoutedEventArgs const&)
     {
-        auto id = unbox_value_or<int64_t>(sender.as<Button>().Tag(), 0);
+        ActivateGameCard(unbox_value_or<int64_t>(sender.as<Button>().Tag(), 0));
+    }
+
+    // 卡片激活的唯一出口：鼠标点击和手柄 A 都走这里，免得两套逻辑各自漂移。
+    void LibraryPage::ActivateGameCard(int64_t id)
+    {
         if (id == 0)
         {
             return;
@@ -913,6 +919,59 @@ namespace winrt::GameLibrary::implementation
             return;
         }
         Frame().Navigate(xaml_typename<winrt::GameLibrary::GameDetailPage>(), box_value(id));
+    }
+
+    // 焦点在 GridView / ListView 的某一项上时，取出那一项对应的游戏 id。
+    // 焦点通常落在 GridViewItem 容器上（容器才是列表的 Tab 停靠点），也可能落在容器里那个
+    // Button 上（用户用 Tab 键走的时候），两种都得认。
+    int64_t LibraryPage::FocusedCardGameId(winrt::Microsoft::UI::Xaml::DependencyObject const& focused)
+    {
+        if (focused == nullptr)
+        {
+            return 0;
+        }
+        if (auto button = focused.try_as<Button>())
+        {
+            if (Services::GamepadFocus::FocusInside(GameGrid(), button)
+                || Services::GamepadFocus::FocusInside(GameList(), button))
+            {
+                return unbox_value_or<int64_t>(button.Tag(), 0);
+            }
+            return 0;
+        }
+        winrt::Windows::Foundation::IInspectable content{ nullptr };
+        if (auto gridItem = focused.try_as<winrt::Microsoft::UI::Xaml::Controls::GridViewItem>())
+        {
+            content = gridItem.Content();
+        }
+        else if (auto listItem = focused.try_as<winrt::Microsoft::UI::Xaml::Controls::ListViewItem>())
+        {
+            content = listItem.Content();
+        }
+        if (auto button = content.try_as<Button>())
+        {
+            return unbox_value_or<int64_t>(button.Tag(), 0);
+        }
+        return 0;
+    }
+
+    // 库页的手柄语义：
+    //   方向键 → 交给通用焦点导航（GridView / ListView 自己管虚拟化滚动，我们别插手中）
+    //   A      → 焦点在游戏卡上就打开详情（管理模式=勾选）；在工具栏上就交给通用逻辑去 Invoke
+    bool LibraryPage::HandleNavAction(Services::NavAction action)
+    {
+        if (action != Services::NavAction::Confirm)
+        {
+            return false;
+        }
+        auto focused = Services::GamepadFocus::FocusedElement(Content());
+        int64_t const id = FocusedCardGameId(focused);
+        if (id == 0)
+        {
+            return false;
+        }
+        ActivateGameCard(id);
+        return true;
     }
 
     void LibraryPage::CardFavorite_Click(IInspectable const& sender, RoutedEventArgs const&)
