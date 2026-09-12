@@ -574,18 +574,10 @@ MainWindow::MainWindow()
         int const dipX = static_cast<int>(settings.GetInt64(kKeyWindowX));
         int const dipY = static_cast<int>(settings.GetInt64(kKeyWindowY));
 
-        double const scale = DpiScale(hwnd);
-        WinRect desired{};
-        desired.x = DipToPhysical(dipX, scale);
-        desired.y = DipToPhysical(dipY, scale);
-        desired.w = DipToPhysical(dipW, scale);
-        desired.h = DipToPhysical(dipH, scale);
-        WinRect const target = ClampToVisibleArea(desired, EnumerateWorkAreas());
-
-        m_placementX = target.x;
-        m_placementY = target.y;
-        m_placementW = target.w;
-        m_placementH = target.h;
+        m_placementDipX = dipX;
+        m_placementDipY = dipY;
+        m_placementDipW = dipW;
+        m_placementDipH = dipH;
         m_placementMaximize = settings.GetBool(kKeyWindowMax);
         m_placementValid = true;
 
@@ -627,7 +619,20 @@ MainWindow::MainWindow()
         catch (...)
         {
         }
-        ::SetWindowPos(hwnd, nullptr, m_placementX, m_placementY, m_placementW, m_placementH,
+
+        // 每次调用都用【当前】DPI 重新换算，而不是复用上次算好的物理像素：
+        // 混合 DPI 多屏下，第一遍（窗口还在主屏）换算出的尺寸未必适合目标屏，
+        // 但第一遍已经把窗口挪到目标屏了，于是「首次 Activated 再补一次」这一遍
+        // 就会用目标屏的 DPI 重算 —— 两遍自然收敛到正确值。单屏场景两遍完全相同。
+        double const scale = DpiScale(hwnd);
+        WinRect desired{};
+        desired.x = DipToPhysical(m_placementDipX, scale);
+        desired.y = DipToPhysical(m_placementDipY, scale);
+        desired.w = DipToPhysical(m_placementDipW, scale);
+        desired.h = DipToPhysical(m_placementDipH, scale);
+        WinRect const target = ClampToVisibleArea(desired, EnumerateWorkAreas());
+
+        ::SetWindowPos(hwnd, nullptr, target.x, target.y, target.w, target.h,
                        SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
