@@ -25,6 +25,8 @@
 #include <winrt/Windows.UI.Xaml.h>
 
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -74,13 +76,158 @@ namespace winrt::GameLibrary::implementation
         return nullptr;
     }
 
+    // ======================= 窗口位置 / 尺寸记忆 =======================
+    // 存储：SQLite 的 settings 表（Data::AppSettings），键见下。
+    // 单位：库里一律存【逻辑像素 DIP】，还原时按当前 DPI 换算成物理像素。
+    //       DIP 存库可以保证换显示器 / 改系统缩放后，窗口的视觉大小不变。
+    //
+    // 为什么用 GetWindowPlacement 而不是 AppWindow.Position/Size：
+    //   最大化时 AppWindow.Size 给的是【最大化后】的尺寸，存下来下次还原就会把
+    //   "还原矩形" 丢掉（取消最大化时发现窗口和最大化时一样大，经典 bug）。
+    //   GetWindowPlacement 的 rcNormalPosition 在最大化状态下依然是【还原后】的
+    //   矩形 —— 本机实测确认（PerMonitorV2 / 150% DPI 下，非最大化时它与
+    //   GetWindowRect 逐像素相等，反复「保存→还原」3 次零漂移）。
+    //
+    // 为什么还原用 SetWindowPos 而不是 SetWindowPlacement：
+    //   实测 SetWindowPlacement 会把【隐藏】窗口直接显示出来（visible 0 → 1），
+    //   我们希望在 Activate 之前静默地把窗口摆好；而 SetWindowPos 对隐藏窗口
+    //   不改变可见性，且与 rcNormalPosition 同坐标系，实测零漂移。
+    constexpr wchar_t kKeyWindowX[] = L"window.x";
+    constexpr wchar_t kKeyWindowY[] = L"window.y";
+    constexpr wchar_t kKeyWindowW[] = L"window.width";
+    constexpr wchar_t kKeyWindowH[] = L"window.height";
+    constexpr wchar_t kKeyWindowMax[] = L"window.maximized";
+
+    constexpr int kMinWindowW = 800;      // DIP；小于此值视为记录损坏，不予采信
+    constexpr int kMinWindowH = 600;
+    constexpr int kVisibleMarginX = 160;  // 至少要留这么宽的一块标题栏在屏内，否则用户拖不回来
+    constexpr int kVisibleMarginY = 60;
+    constexpr double kDipBase = 96.0;
+
+    struct WinRect
+    {
+        int x = 0;
+        int y = 0;
+        int w = 0;
+        int h = 0;
+    };
+
+    int ClampInt(int value, int lo, int hi)
+    {
+        if (lo > hi)
+        {
+            std::swap(lo, hi);
+        }
+        return value < lo ? lo : (value > hi ? hi : value);
+    }
+
+    int IntersectArea(WinRect const& a, WinRect const& b)
+    {
+        int const dx = std::min(a.x + a.w, b.x + b.w) - std::max(a.x, b.x);
+        int const dy = std::min(a.y + a.h, b.y + b.h) - std::max(a.y, b.y);
+        return (dx > 0 && dy > 0) ? dx * dy : 0;
+    }
+
+    // 枚举所有显示器的工作区（物理像素）。用 Win32 而不是 WinRT DisplayArea：
+    // 这张表本身就是 SetWindowPos 的坐标系，且下面这段逻辑能脱离 WinRT 单独编译测试。
+    std::vector<WinRect> EnumerateWorkAreas()
+    {
+        std::vector<WinRect> areas;
+        ::EnumDisplayMonitors(nullptr, nullptr,
+            [](HMONITOR monitor, HDC, LPRECT, LPARAM param) -> BOOL {
+                MONITORINFO info{};
+                info.cbSize = sizeof(info);
+                if (::GetMonitorInfoW(monitor, &info))
+                {
+                    auto& out = *reinterpret_cast<std::vector<WinRect>*>(param);
+                    RECT const& r = info.rcWork;
+                    out.push_back(WinRect{ r.left, r.top, r.right - r.left, r.bottom - r.top });
+                }
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(&areas));
+        if (areas.empty())
+        {
+            RECT r{};
+            if (::SystemParametersInfoW(SPI_GETWORKAREA, 0, &r, 0))
+            {
+                areas.push_back(WinRect{ r.left, r.top, r.right - r.left, r.bottom - r.top });
+            }
+        }
+        return areas;
+    }
+
+    // 把「理想矩形」夹到能看见的范围：
+    //   · 尺寸不超过它所在的那块工作区（外接小屏拔了 / 分辨率调小了都不会超框）
+    //   · 与任何屏幕都几乎不重叠时（显示器被拔掉）→ 居中到主显示器
+    //   · 否则保留位置，但保证标题栏有一部分留在屏内，否则窗口再也点不到
+    WinRect ClampToVisibleArea(WinRect desired, std::vector<WinRect> const& areas)
+    {
+        if (areas.empty())
+        {
+            return desired;
+        }
+        WinRect const& primary = areas.front();   // EnumDisplayMonitors 保证主显示器在最前
+        WinRect const* host = &primary;
+        int bestOverlap = -1;
+        for (auto const& area : areas)
+        {
+            int const overlap = IntersectArea(desired, area);
+            if (overlap > bestOverlap)
+            {
+                bestOverlap = overlap;
+                host = &area;
+            }
+        }
+
+        WinRect out = desired;
+        out.w = ClampInt(out.w, kMinWindowW, std::max(kMinWindowW, host->w));
+        out.h = ClampInt(out.h, kMinWindowH, std::max(kMinWindowH, host->h));
+
+        if (bestOverlap < kVisibleMarginX * kVisibleMarginY)
+        {
+            out.x = primary.x + (primary.w - out.w) / 2;
+            out.y = primary.y + (primary.h - out.h) / 2;
+        }
+        else
+        {
+            out.x = ClampInt(out.x, host->x - out.w + kVisibleMarginX, host->x + host->w - kVisibleMarginX);
+            out.y = ClampInt(out.y, host->y, host->y + host->h - kVisibleMarginY);
+        }
+        return out;
+    }
+
+    // 物理像素 = DIP × (DPI / 96)
+    double DpiScale(HWND hwnd)
+    {
+        UINT dpi = hwnd != nullptr ? ::GetDpiForWindow(hwnd) : 0;
+        if (dpi == 0)
+        {
+            dpi = ::GetDpiForSystem();
+        }
+        return dpi == 0 ? 1.0 : dpi / kDipBase;
+    }
+
+    int PhysicalToDip(int physical, double scale)
+    {
+        return static_cast<int>(std::lround(physical / scale));
+    }
+
+    int DipToPhysical(int dip, double scale)
+    {
+        return static_cast<int>(std::lround(dip * scale));
+    }
+
 MainWindow::MainWindow()
     {
         s_instance = this;
-    InitializeComponent();
-    Title(L"GameLibrary");
-    ConfigureBorderlessWindow();
-    Services::AppServices::Instance().Initialize();
+        InitializeComponent();
+        Title(L"GameLibrary");
+        ConfigureBorderlessWindow();
+        Services::AppServices::Instance().Initialize();
+
+        // 窗口此刻还没显示，正是静默摆位的最佳时机（见上面 SetWindowPos 的说明）。
+        ApplySavedWindowPlacement();
 
         // 窗口激活后再应用原生标题栏按钮颜色（激活前设置会被忽略）
         Activated([this](IInspectable const&, WindowActivatedEventArgs const&) {
@@ -98,11 +245,38 @@ MainWindow::MainWindow()
                     titleBar.ButtonPressedBackgroundColor(Microsoft::UI::ColorHelper::FromArgb(51, 255, 255, 255));
                     titleBar.ButtonPressedForegroundColor(Microsoft::UI::ColorHelper::FromArgb(255, 255, 255, 255));
                 }
+
+                // 首帧补一次摆位：构造函数里设的尺寸有可能被 XAML 的首次布局覆盖。
+                // ApplyWindowPlacement 是幂等的（值没变就是空操作），重复调用无副作用。
+                // 最大化必须等窗口真正显示之后再调，否则可能不生效。
+                if (!m_placementActivated)
+                {
+                    m_placementActivated = true;
+                    ApplyWindowPlacement();
+                    if (m_placementValid && m_placementMaximize)
+                    {
+                        if (auto presenter = AppWindow().Presenter().try_as<Microsoft::UI::Windowing::OverlappedPresenter>())
+                        {
+                            presenter.Maximize();
+                        }
+                    }
+                }
             }
             catch (...)
             {
             }
         });
+
+        // 位置/尺寸落库：拖动与缩放期间 Changed 会按像素高频触发，防抖之后再写，
+        // 免得每挪一个像素就写一次 SQLite；关闭时再补一次（防抖可能还没到点）。
+        m_placementDebounce = winrt::Microsoft::UI::Xaml::DispatcherTimer();
+        m_placementDebounce.Interval(std::chrono::milliseconds(700));
+        m_placementDebounce.Tick({ this, &MainWindow::PlacementDebounceTick });
+        if (auto appWindow = AppWindow())
+        {
+            appWindow.Changed({ this, &MainWindow::OnAppWindowChanged });
+        }
+        Closed({ this, &MainWindow::OnWindowClosed });
 
         // 页面入场淡入 + 顶栏动效；导航完成后串行处理排队中的导航请求
         // 注意：timer 须在 Navigated 注册前初始化（初始导航会立即触发该事件）
@@ -371,6 +545,180 @@ MainWindow::MainWindow()
         catch (...)
         {
         }
+    }
+
+    // ---------------- 窗口位置 / 尺寸记忆 ----------------
+
+    // 读库 → 换算 → 夹到可见范围 → 套用。没有记录时保持系统默认尺寸（等价于旧行为）。
+    void MainWindow::ApplySavedWindowPlacement()
+    {
+        auto& services = Services::AppServices::Instance();
+        if (!services.Initialized())
+        {
+            return;
+        }
+        auto appWindow = AppWindow();
+        HWND hwnd = appWindow ? reinterpret_cast<HWND>(appWindow.Id().Value) : nullptr;
+        if (hwnd == nullptr || !::IsWindow(hwnd))
+        {
+            return;
+        }
+
+        auto& settings = services.Settings();
+        int const dipW = static_cast<int>(settings.GetInt64(kKeyWindowW));
+        int const dipH = static_cast<int>(settings.GetInt64(kKeyWindowH));
+        if (dipW < kMinWindowW || dipH < kMinWindowH)
+        {
+            return;
+        }
+        int const dipX = static_cast<int>(settings.GetInt64(kKeyWindowX));
+        int const dipY = static_cast<int>(settings.GetInt64(kKeyWindowY));
+
+        double const scale = DpiScale(hwnd);
+        WinRect desired{};
+        desired.x = DipToPhysical(dipX, scale);
+        desired.y = DipToPhysical(dipY, scale);
+        desired.w = DipToPhysical(dipW, scale);
+        desired.h = DipToPhysical(dipH, scale);
+        WinRect const target = ClampToVisibleArea(desired, EnumerateWorkAreas());
+
+        m_placementX = target.x;
+        m_placementY = target.y;
+        m_placementW = target.w;
+        m_placementH = target.h;
+        m_placementMaximize = settings.GetBool(kKeyWindowMax);
+        m_placementValid = true;
+
+        // 记下「刚读出来的值」，好让紧接着的防抖保存因为值没变而跳过这次写库。
+        m_savedX = dipX;
+        m_savedY = dipY;
+        m_savedW = dipW;
+        m_savedH = dipH;
+        m_savedMaximize = m_placementMaximize;
+        m_savedValid = true;
+
+        ApplyWindowPlacement();
+    }
+
+    void MainWindow::ApplyWindowPlacement()
+    {
+        if (!m_placementValid)
+        {
+            return;
+        }
+        auto appWindow = AppWindow();
+        HWND hwnd = appWindow ? reinterpret_cast<HWND>(appWindow.Id().Value) : nullptr;
+        if (hwnd == nullptr || !::IsWindow(hwnd))
+        {
+            return;
+        }
+        try
+        {
+            // 已经最大化时不要再 SetWindowPos —— 那会把「还原矩形」改写成最大化后的矩形，
+            // 用户下次点还原就会发现窗口大小不对了。
+            if (auto presenter = appWindow.Presenter().try_as<Microsoft::UI::Windowing::OverlappedPresenter>())
+            {
+                if (presenter.State() == Microsoft::UI::Windowing::OverlappedPresenterState::Maximized)
+                {
+                    return;
+                }
+            }
+        }
+        catch (...)
+        {
+        }
+        ::SetWindowPos(hwnd, nullptr, m_placementX, m_placementY, m_placementW, m_placementH,
+                       SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    void MainWindow::OnAppWindowChanged(winrt::Windows::Foundation::IInspectable const&,
+        winrt::Microsoft::UI::Windowing::AppWindowChangedEventArgs const& args)
+    {
+        if (!args.DidSizeChange() && !args.DidPositionChange() && !args.DidPresenterChange())
+        {
+            return;
+        }
+        if (m_placementDebounce)
+        {
+            m_placementDebounce.Stop();
+            m_placementDebounce.Start();
+        }
+    }
+
+    void MainWindow::PlacementDebounceTick(winrt::Windows::Foundation::IInspectable const&,
+        winrt::Windows::Foundation::IInspectable const&)
+    {
+        m_placementDebounce.Stop();
+        PersistWindowPlacement();
+    }
+
+    void MainWindow::OnWindowClosed(winrt::Windows::Foundation::IInspectable const&,
+        winrt::Microsoft::UI::Xaml::WindowEventArgs const&)
+    {
+        if (m_placementDebounce)
+        {
+            m_placementDebounce.Stop();
+        }
+        PersistWindowPlacement();
+    }
+
+    void MainWindow::PersistWindowPlacement()
+    {
+        auto& services = Services::AppServices::Instance();
+        if (!services.Initialized())
+        {
+            return;
+        }
+        auto appWindow = AppWindow();
+        HWND hwnd = appWindow ? reinterpret_cast<HWND>(appWindow.Id().Value) : nullptr;
+        if (hwnd == nullptr || !::IsWindow(hwnd))
+        {
+            return;
+        }
+
+        WINDOWPLACEMENT placement{};
+        placement.length = sizeof(placement);
+        if (!::GetWindowPlacement(hwnd, &placement))
+        {
+            return;
+        }
+        // 最小化时 showCmd 是 SW_SHOWMINIMIZED：既看不出「最小化之前是否最大化」，
+        // 也不该把最小化本身记下来 —— 直接跳过，保留上一次正常状态写下的结果。
+        if (placement.showCmd == SW_SHOWMINIMIZED)
+        {
+            return;
+        }
+
+        RECT const& normal = placement.rcNormalPosition;   // 最大化时这里也是【还原后】的矩形
+        double const scale = DpiScale(hwnd);
+        int const dipX = PhysicalToDip(normal.left, scale);
+        int const dipY = PhysicalToDip(normal.top, scale);
+        int const dipW = PhysicalToDip(normal.right - normal.left, scale);
+        int const dipH = PhysicalToDip(normal.bottom - normal.top, scale);
+        bool const maximized = (placement.showCmd == SW_SHOWMAXIMIZED);
+
+        if (dipW < kMinWindowW || dipH < kMinWindowH)
+        {
+            return;   // 异常值不许覆盖已有记录
+        }
+        if (m_savedValid && dipX == m_savedX && dipY == m_savedY && dipW == m_savedW && dipH == m_savedH
+            && maximized == m_savedMaximize)
+        {
+            return;   // 值没变，别白写一次 SQLite
+        }
+        m_savedX = dipX;
+        m_savedY = dipY;
+        m_savedW = dipW;
+        m_savedH = dipH;
+        m_savedMaximize = maximized;
+        m_savedValid = true;
+
+        auto& settings = services.Settings();
+        settings.SetInt64(kKeyWindowX, dipX);
+        settings.SetInt64(kKeyWindowY, dipY);
+        settings.SetInt64(kKeyWindowW, dipW);
+        settings.SetInt64(kKeyWindowH, dipH);
+        settings.SetBool(kKeyWindowMax, maximized);
     }
 
     void MainWindow::NavButton_Click(IInspectable const& sender, RoutedEventArgs const&)

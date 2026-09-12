@@ -5,6 +5,8 @@
 #include "../Core/Models.h"
 #include "../Services/GamepadNavigator.h"
 
+#include <winrt/Microsoft.UI.Windowing.h>
+
 #include <memory>
 #include <vector>
 #include <cstdint>
@@ -52,6 +54,21 @@ namespace winrt::GameLibrary::implementation
 
     private:
         void ConfigureBorderlessWindow();
+
+        // ---- 窗口位置 / 尺寸记忆 ----
+        // 读库 → 算出目标矩形（物理像素）；无记录或记录不合法时什么都不做。
+        void ApplySavedWindowPlacement();
+        // 把算好的目标矩形套用到窗口上。可重复调用（幂等），已最大化时直接跳过。
+        void ApplyWindowPlacement();
+        // 把当前窗口的【还原矩形】+ 最大化状态写回 settings 表。
+        void PersistWindowPlacement();
+        void OnAppWindowChanged(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Windowing::AppWindowChangedEventArgs const& args);
+        void OnWindowClosed(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::WindowEventArgs const& args);
+        void PlacementDebounceTick(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Windows::Foundation::IInspectable const& args);
+
         void NavigateToTag(hstring const& tag);
         void UpdateNavSelection(hstring const& tag);
         void InitGamepadNavigator();
@@ -98,6 +115,24 @@ namespace winrt::GameLibrary::implementation
         winrt::Microsoft::UI::Xaml::DispatcherTimer m_navTimeout{ nullptr };
         bool m_navBusy = false;
         std::wstring m_pendingRoute;
+
+        // 窗口位置 / 尺寸记忆。
+        // 存库用【逻辑像素 DIP】，还原时按当前显示器 DPI 换算成物理像素 ——
+        // 这样换显示器 / 改缩放后，窗口的视觉大小不会跟着变。
+        bool m_placementValid = false;      // 库里有可用记录
+        bool m_placementMaximize = false;   // 上次退出时是最大化
+        bool m_placementActivated = false;  // 「首帧还原 + 最大化」只做一次
+        int m_placementX = 0;               // 目标矩形（物理像素，屏幕坐标）
+        int m_placementY = 0;
+        int m_placementW = 0;
+        int m_placementH = 0;
+        bool m_savedValid = false;          // 已落库的 DIP 值缓存，用来跳过重复写入
+        int m_savedX = 0;
+        int m_savedY = 0;
+        int m_savedW = 0;
+        int m_savedH = 0;
+        bool m_savedMaximize = false;
+        winrt::Microsoft::UI::Xaml::DispatcherTimer m_placementDebounce{ nullptr };
 
         static MainWindow* s_instance;
     };
