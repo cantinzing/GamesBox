@@ -163,6 +163,18 @@
                     </Grid>
                     <TextBlock Text="范围 3–30 秒，控制首页 Hero 卡片与动态背景自动切换节奏。" Tag="i18n:settings.heroIntervalHint"
                                FontFamily="Hanken Grotesk, Segoe UI" FontSize="12" Foreground="#8D90A1" />
+
+                    <!-- 窗口大小记忆：写入 settings 表的 window.remember 键，由 MainWindow 读取 -->
+                    <Grid ColumnSpacing="12" Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="记住窗口大小" Tag="i18n:settings.rememberWindow" Grid.Column="0" Style="{StaticResource SettingsFieldLabelStyle}" />
+                        <ToggleButton x:Name="RememberWindowToggle" Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" />
+                    </Grid>
+                    <TextBlock Text="开启时恢复上次退出时的窗口位置与大小；关闭后每次启动都居中显示。" Tag="i18n:settings.rememberWindowHint"
+                               FontFamily="Hanken Grotesk, Segoe UI" FontSize="12" Foreground="#8D90A1" />
                 </StackPanel>
             </Border>
 

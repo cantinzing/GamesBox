@@ -39,6 +39,17 @@ namespace winrt::GameLibrary::implementation
         {
             return SolidColorBrush(Microsoft::UI::ColorHelper::FromArgb(0xFF, 0xF0, 0xD0, 0x50));
         }
+
+        // 开关按钮的开/关外观（三个开关共用一套：AutoFetch / AutoCarousel / RememberWindow）。
+        // 注意 ToggleButton 在 Controls::Primitives 里，不在 Controls 里。
+        void StyleToggle(winrt::Microsoft::UI::Xaml::Controls::Primitives::ToggleButton const& toggle, bool on)
+        {
+            auto& loc = Services::Localization::Instance();
+            toggle.Content(box_value(hstring(on ? loc.T(L"settings.on") : loc.T(L"settings.off"))));
+            toggle.Background(nullptr);
+            toggle.BorderBrush(on ? MakeBrush(0x26, 0xFF, 0xFF, 0xFF) : MakeBrush(0x1A, 0xFF, 0xFF, 0xFF));
+            toggle.Foreground(on ? MakeBrush(0xFF, 0xFF, 0xFF, 0xFF) : MakeBrush(0x99, 0xFF, 0xFF, 0xFF));
+        }
     }
 
     SettingsPage::SettingsPage()
@@ -83,6 +94,11 @@ namespace winrt::GameLibrary::implementation
         AutoCarouselToggle().Click({ this, &SettingsPage::AutoCarouselToggle_Click });
         AutoCarouselToggle().IsChecked(services.Settings().GetBool(L"home.carousel.autoplay", true));
         UpdateAutoCarouselToggle();
+
+        // 记住窗口大小（键由 MainWindow 在启动时读取）
+        RememberWindowToggle().Click({ this, &SettingsPage::RememberWindowToggle_Click });
+        RememberWindowToggle().IsChecked(services.Settings().GetBool(L"window.remember", true));
+        UpdateRememberWindowToggle();
 
         IgdbClientId().Text(hstring(services.Settings().GetString(L"igdb.client_id")));
         IgdbSecret().Password(hstring(services.Credentials().Read(L"GameLibrary/IGDB/ClientSecret")));
@@ -263,6 +279,10 @@ namespace winrt::GameLibrary::implementation
         services.Settings().SetBool(L"home.carousel.autoplay", AutoCarouselToggle().IsChecked().Value());
         UpdateAutoCarouselToggle();
 
+        // 记住窗口大小：下次启动生效（本次窗口已经摆好了，不在这里动它）
+        services.Settings().SetBool(L"window.remember", RememberWindowToggle().IsChecked().Value());
+        UpdateRememberWindowToggle();
+
         // 语言
         auto lang = LanguageBox().SelectedIndex() == 1 ? L"en" : L"zh";
         services.Settings().SetString(L"language", lang);
@@ -299,43 +319,30 @@ namespace winrt::GameLibrary::implementation
 
     void SettingsPage::UpdateAutoFetchToggle()
     {
-        bool on = AutoFetchToggle().IsChecked() != nullptr && AutoFetchToggle().IsChecked().Value();
-        auto& loc = Services::Localization::Instance();
-        AutoFetchToggle().Content(box_value(hstring(on ? loc.T(L"settings.on") : loc.T(L"settings.off"))));
-        AutoFetchToggle().Background(nullptr);
-        if (on)
-        {
-            AutoFetchToggle().BorderBrush(MakeBrush(0x26, 0xFF, 0xFF, 0xFF));
-            AutoFetchToggle().Foreground(MakeBrush(0xFF, 0xFF, 0xFF, 0xFF));
-        }
-        else
-        {
-            AutoFetchToggle().BorderBrush(MakeBrush(0x1A, 0xFF, 0xFF, 0xFF));
-            AutoFetchToggle().Foreground(MakeBrush(0x99, 0xFF, 0xFF, 0xFF));
-        }
+        StyleToggle(AutoFetchToggle(),
+            AutoFetchToggle().IsChecked() != nullptr && AutoFetchToggle().IsChecked().Value());
     }
 
     void SettingsPage::UpdateAutoCarouselToggle()
     {
-        bool on = AutoCarouselToggle().IsChecked() != nullptr && AutoCarouselToggle().IsChecked().Value();
-        auto& loc = Services::Localization::Instance();
-        AutoCarouselToggle().Content(box_value(hstring(on ? loc.T(L"settings.on") : loc.T(L"settings.off"))));
-        AutoCarouselToggle().Background(nullptr);
-        if (on)
-        {
-            AutoCarouselToggle().BorderBrush(MakeBrush(0x26, 0xFF, 0xFF, 0xFF));
-            AutoCarouselToggle().Foreground(MakeBrush(0xFF, 0xFF, 0xFF, 0xFF));
-        }
-        else
-        {
-            AutoCarouselToggle().BorderBrush(MakeBrush(0x1A, 0xFF, 0xFF, 0xFF));
-            AutoCarouselToggle().Foreground(MakeBrush(0x99, 0xFF, 0xFF, 0xFF));
-        }
+        StyleToggle(AutoCarouselToggle(),
+            AutoCarouselToggle().IsChecked() != nullptr && AutoCarouselToggle().IsChecked().Value());
+    }
+
+    void SettingsPage::UpdateRememberWindowToggle()
+    {
+        StyleToggle(RememberWindowToggle(),
+            RememberWindowToggle().IsChecked() != nullptr && RememberWindowToggle().IsChecked().Value());
     }
 
     void SettingsPage::AutoCarouselToggle_Click(IInspectable const&, RoutedEventArgs const&)
     {
         UpdateAutoCarouselToggle();
+    }
+
+    void SettingsPage::RememberWindowToggle_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        UpdateRememberWindowToggle();
     }
 
     void SettingsPage::AutoFetchToggle_Click(IInspectable const&, RoutedEventArgs const&)

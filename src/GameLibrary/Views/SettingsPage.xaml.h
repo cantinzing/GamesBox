@@ -21,6 +21,8 @@ namespace winrt::GameLibrary::implementation
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         void AutoCarouselToggle_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        void RememberWindowToggle_Click(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         void CopyMachineCode_Click(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::RoutedEventArgs const& args);
         void ActivateButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
@@ -32,6 +34,7 @@ namespace winrt::GameLibrary::implementation
         void PopulateSourceDetection();
         void UpdateAutoFetchToggle();
         void UpdateAutoCarouselToggle();
+        void UpdateRememberWindowToggle();
         void UpdateActivationStatus();
         void SaveSettings();
         winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_confirmDialog{ nullptr };

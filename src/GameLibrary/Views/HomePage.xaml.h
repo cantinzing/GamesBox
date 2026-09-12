@@ -4,6 +4,7 @@
 
 #include "HomePage.g.h"
 
+#include <winrt/Microsoft.UI.Xaml.Media.Animation.h>
 #include <winrt/Microsoft.UI.Xaml.Navigation.h>
 
 #include <vector>
@@ -40,6 +41,8 @@ namespace winrt::GameLibrary::implementation
         void NavigateToGame(int64_t gameId);
         void LaunchGame(int64_t gameId);
         void UpdateCardSelection(int64_t selectedId);
+        // 单张卡片的选中态过渡（尺寸 / 不透明度 / 白色描边一起动，而不是一帧跳到位）
+        void AnimateCoverState(winrt::Microsoft::UI::Xaml::Controls::Border const& cover, bool selected);
         void CarouselTick(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Windows::Foundation::IInspectable const& args);
         void StartCarouselTimer();
@@ -56,6 +59,8 @@ namespace winrt::GameLibrary::implementation
         int m_refreshGen = 0;
         bool m_autoPlay = true;
         winrt::Microsoft::UI::Xaml::DispatcherTimer m_carouselTimer{ nullptr };
+        // 卡片选中过渡的 Storyboard：动画期间必须持有引用，跑完的就地清掉
+        std::vector<winrt::Microsoft::UI::Xaml::Media::Animation::Storyboard> m_cardAnims;
     };
 }
 

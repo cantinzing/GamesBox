@@ -15,6 +15,7 @@
 #include <winrt/Microsoft.UI.Composition.h>
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Animation.h>
 #include <winrt/Microsoft.UI.Xaml.Navigation.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
@@ -41,6 +42,11 @@ namespace winrt::GameLibrary::implementation
     namespace
     {
         constexpr int kMaxCarousel = 12;
+        // 封面尺寸与选中态参数（BuildCarouselCard 与 AnimateCoverState 共用，别再各写一份字面量）
+        constexpr double kCoverNormal = 128.0;      // 未选中
+        constexpr double kCoverSelected = 144.0;    // 选中
+        constexpr double kCoverIdleOpacity = 0.8;   // 未选中封面压暗，突出选中那张
+        constexpr auto kCoverTransition = std::chrono::milliseconds(220);   // 选中态过渡时长
         // 进度条分母：100h（对齐 PLAYTIME_CAP_SEC）
         constexpr int64_t kPlaytimeCapSec = 100 * 3600;
 
@@ -241,12 +247,12 @@ namespace winrt::GameLibrary::implementation
                 return;
             }
 
-            // 最近游玩优先，其余按添加序填充（对齐 Home.tsx 的 carousel 逻辑）
+            // 经常玩的优先，其余按入库序补位（排序规则见 BuildCarouselList）
             auto carousel = BuildCarouselList();
             m_carousel = carousel;
             PopulateCarousel(carousel);
 
-            // 默认选中：最近游玩，否则首个（对齐 featured 逻辑）
+            // 默认选中：轨道第一个 = 玩得最久的那款（从没玩过时就是最新入库的那款）
             if (!carousel.empty())
             {
                 Core::Game featured = carousel.front();
@@ -257,37 +263,30 @@ namespace winrt::GameLibrary::implementation
 
     std::vector<Core::Game> HomePage::BuildCarouselList()
     {
-        std::vector<Core::Game> recent;
-        std::vector<Core::Game> rest;
-        for (auto const& g : m_games)
-        {
-            if (g.LastPlayedUnixSeconds > 0)
+        // 排序：经常玩的排最前 —— 先比累计游玩时长（降序），时长相同再看最近一次游玩时间，
+        // 都相同（含从没玩过的）按 Id 降序（后入库的靠前）。未玩过的一律排在玩过的后面。
+        std::vector<Core::Game> sorted = m_games;
+        std::sort(sorted.begin(), sorted.end(), [](Core::Game const& a, Core::Game const& b) {
+            if (a.TotalPlaySeconds != b.TotalPlaySeconds)
             {
-                recent.push_back(g);
+                return a.TotalPlaySeconds > b.TotalPlaySeconds;
             }
-            else
+            if (a.LastPlayedUnixSeconds != b.LastPlayedUnixSeconds)
             {
-                rest.push_back(g);
+                return a.LastPlayedUnixSeconds > b.LastPlayedUnixSeconds;
             }
-        }
-        std::sort(recent.begin(), recent.end(), [](Core::Game const& a, Core::Game const& b) {
-            return a.LastPlayedUnixSeconds > b.LastPlayedUnixSeconds;
-        });
-        std::sort(rest.begin(), rest.end(), [](Core::Game const& a, Core::Game const& b) {
             return a.Id > b.Id;
         });
+
+        // 组装轨道：玩过的都是主角，全部收进来；没玩过的按上面的顺序补位，直到 12 个上限。
         std::vector<Core::Game> carousel;
-        for (auto const& g : recent)
+        for (auto const& game : sorted)
         {
-            carousel.push_back(g);
-        }
-        for (auto const& g : rest)
-        {
-            if (carousel.size() >= kMaxCarousel)
+            if (game.TotalPlaySeconds <= 0 && carousel.size() >= kMaxCarousel)
             {
                 break;
             }
-            carousel.push_back(g);
+            carousel.push_back(game);
         }
         return carousel;
     }
@@ -376,16 +375,21 @@ namespace winrt::GameLibrary::implementation
         // 封面容器：选中 144x144 放大 + 紧贴封面白边，未选中 128x128 缩小 + 低透明度。
         // 用 Border 承载：Border 按 CornerRadius 裁剪内容（封面图随之圆角，直角不再盖住圆角）
         auto cover = Border();
-        cover.Width(selected ? 144 : 128);
-        cover.Height(selected ? 144 : 128);
+        cover.Width(selected ? kCoverSelected : kCoverNormal);
+        cover.Height(selected ? kCoverSelected : kCoverNormal);
         cover.CornerRadius(winrt::Microsoft::UI::Xaml::CornerRadius{ 24, 24, 24, 24 });
         cover.Background(MakeCoverBrush(game));
-        cover.BorderBrush(selected ? MakeBrush(0xFF, 0xFF, 0xFF, 0xFF)
-                                   : MakeBrush(0x00, 0xFF, 0xFF, 0xFF));
+        // 白描边始终挂着同一个画刷，选中与否只改它的 Opacity —— 这样切换时可以淡入淡出，
+        // 而不是「描边 / 无描边」一帧切换（BorderBrush 本身没法做动画，画刷的 Opacity 可以）。
+        auto ring = MakeBrush(0xFF, 0xFF, 0xFF, 0xFF);
+        ring.Opacity(selected ? 1.0 : 0.0);
+        cover.BorderBrush(ring);
         cover.BorderThickness(Thickness(2, 2, 2, 2));
-        cover.Opacity(selected ? 1.0 : 0.8);
+        cover.Opacity(selected ? 1.0 : kCoverIdleOpacity);
         cover.Margin(Thickness(8, 8, 8, 8));
         cover.VerticalAlignment(VerticalAlignment::Center);
+        // 圆角是 XAML 画出来的：落在整数像素上圆弧才干净，半像素定位会让整圈抗锯齿发虚
+        cover.UseLayoutRounding(true);
 
         auto coverContent = Grid();
         auto icon = FontIcon();
@@ -414,11 +418,9 @@ namespace winrt::GameLibrary::implementation
         cover.Child(coverContent);
 
         button.Content(cover);
-        if (selected)
-        {
-            // 选中卡片阴影辉光（对齐 shadow-2xl）
-            Services::AttachGlow(cover, 0xCC, 0x00, 0x00, 0x00, 24.0f, 8.0f);
-        }
+        // 注意：这里原来挂了一个 Services::AttachGlow（对齐 shadow-2xl），但它是把 SpriteVisual
+        // 用 SetElementChildVisual 塞进 cover 里、且画刷是全透明的 —— 全透明画刷 = 空的投影遮罩，
+        // 实际什么都画不出来，只白白往这个圆角元素的视觉树里插了一个节点。已移除。
         return button;
     }
 
@@ -561,7 +563,7 @@ namespace winrt::GameLibrary::implementation
             BackgroundImage().Source(bitmap);
             BackgroundImage().Opacity(0.7);
         }
-        catch (winrt::hresult_error const& e)
+        catch (winrt::hresult_error const&)
         {
             BackgroundImage().Opacity(0);
         }
@@ -590,14 +592,104 @@ namespace winrt::GameLibrary::implementation
             {
                 continue;
             }
-bool selected = (id == selectedId);
-            cover.Width(selected ? 144 : 128);
-            cover.Height(selected ? 144 : 128);
-            cover.BorderBrush(selected ? MakeBrush(0xFF, 0xFF, 0xFF, 0xFF)
-                                       : MakeBrush(0x00, 0xFF, 0xFF, 0xFF));
-            cover.BorderThickness(Thickness(2, 2, 2, 2));
-            cover.Opacity(selected ? 1.0 : 0.8);
+            AnimateCoverState(cover, id == selectedId);
         }
+    }
+
+    // 选中态过渡：尺寸 128↔144、不透明度 0.8↔1、白描边 0↔1 一起走 220ms ease-out。
+    // 原来是一帧切到位 —— 卡片瞬间变大、整条轨道跟着位移，看着很生硬。
+    void HomePage::AnimateCoverState(winrt::Microsoft::UI::Xaml::Controls::Border const& cover, bool selected)
+    {
+        if (cover == nullptr)
+        {
+            return;
+        }
+        double const target = selected ? kCoverSelected : kCoverNormal;
+        double const opacityTarget = selected ? 1.0 : kCoverIdleOpacity;
+        double const ringTarget = selected ? 1.0 : 0.0;
+
+        // 起点：当前实际值（注意刚创建、还没参与布局的卡片 ActualWidth() 是 0，
+        // 那种情况下按「无需动画」处理 —— 它的基准值本来就已经是目标值）
+        double const fromW = cover.ActualWidth();
+        double const fromH = cover.ActualHeight();
+        double const fromOpacity = cover.Opacity();
+        auto const ring = cover.BorderBrush().try_as<SolidColorBrush>();
+        double const fromRing = ring ? ring.Opacity() : ringTarget;
+        bool const laidOut = (fromW > 0.0 && fromH > 0.0);
+
+        // 先把基准值写成目标值，再 Begin 动画。动画的优先级高于本地值，所以
+        // 「先写基准值、后起动画」不会闪一下；而万一动画中途被回收，值会落回基准值
+        // 也就是目标值，不会把卡片卡在半大不小的状态。
+        cover.Width(target);
+        cover.Height(target);
+        cover.Opacity(opacityTarget);
+        if (ring)
+        {
+            ring.Opacity(ringTarget);
+        }
+
+        bool const sizeChanged = laidOut && (std::abs(fromW - target) > 0.5 || std::abs(fromH - target) > 0.5);
+        bool const opacityChanged = std::abs(fromOpacity - opacityTarget) > 0.01;
+        bool const ringChanged = ring != nullptr && std::abs(fromRing - ringTarget) > 0.01;
+        if (!sizeChanged && !opacityChanged && !ringChanged)
+        {
+            return;   // 已经是目标状态（首次填充时每张卡都会走到这里）
+        }
+
+        auto transition = [](double from, double to) {
+            using namespace winrt::Microsoft::UI::Xaml::Media::Animation;
+            auto anim = DoubleAnimation();
+            anim.From(from);
+            anim.To(to);
+            // 注意 Timeline.Duration 收的是 Microsoft::UI::Xaml::Duration（不是 TimeSpan）
+            anim.Duration(winrt::Microsoft::UI::Xaml::Duration{
+                winrt::Windows::Foundation::TimeSpan{ kCoverTransition } });
+            anim.EnableDependentAnimation(true);   // Width/Height 属于依赖动画，必须显式开
+            auto ease = CubicEase();
+            ease.EasingMode(EasingMode::EaseOut);
+            anim.EasingFunction(ease);
+            anim.FillBehavior(FillBehavior::Stop);   // 别用默认的 HoldEnd：动画结束后值应回到我们写的基准值
+            return anim;
+        };
+
+        namespace anim = winrt::Microsoft::UI::Xaml::Media::Animation;
+        auto storyboard = anim::Storyboard();
+        auto add = [&storyboard, &transition](double from, double to, wchar_t const* property,
+                       winrt::Microsoft::UI::Xaml::DependencyObject const& target) {
+            auto anim = transition(from, to);
+            anim::Storyboard::SetTarget(anim, target);
+            anim::Storyboard::SetTargetProperty(anim, property);
+            storyboard.Children().Append(anim);
+        };
+        if (sizeChanged)
+        {
+            add(fromW, target, L"Width", cover);
+            add(fromH, target, L"Height", cover);
+        }
+        if (opacityChanged)
+        {
+            add(fromOpacity, opacityTarget, L"Opacity", cover);
+        }
+        if (ringChanged)
+        {
+            add(fromRing, ringTarget, L"Opacity", ring.as<winrt::Microsoft::UI::Xaml::DependencyObject>());
+        }
+
+        // 清掉已经跑完的动画，否则自动轮播每 8 秒换一次选中，这个容器会一直涨
+        m_cardAnims.erase(
+            std::remove_if(m_cardAnims.begin(), m_cardAnims.end(), [](anim::Storyboard const& sb) {
+                try
+                {
+                    return sb.GetCurrentState() != anim::ClockState::Active;
+                }
+                catch (...)
+                {
+                    return true;
+                }
+            }),
+            m_cardAnims.end());
+        m_cardAnims.push_back(storyboard);
+        storyboard.Begin();
     }
 
     void HomePage::Resume_Click(IInspectable const&, RoutedEventArgs const&)

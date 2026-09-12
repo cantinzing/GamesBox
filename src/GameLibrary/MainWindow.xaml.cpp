@@ -97,6 +97,9 @@ namespace winrt::GameLibrary::implementation
     constexpr wchar_t kKeyWindowW[] = L"window.width";
     constexpr wchar_t kKeyWindowH[] = L"window.height";
     constexpr wchar_t kKeyWindowMax[] = L"window.maximized";
+    // 「记住窗口大小」总开关（设置页可关）。关掉后这几个键【不读也不写】，
+    // 每次启动都把窗口居中；但记录仍留在库里，重新打开开关就接着上次的位置。
+    constexpr wchar_t kKeyWindowRemember[] = L"window.remember";
 
     constexpr int kMinWindowW = 800;      // DIP；小于此值视为记录损坏，不予采信
     constexpr int kMinWindowH = 600;
@@ -252,12 +255,20 @@ MainWindow::MainWindow()
                 if (!m_placementActivated)
                 {
                     m_placementActivated = true;
-                    ApplyWindowPlacement();
-                    if (m_placementValid && m_placementMaximize)
+                    if (m_placementCenter)
                     {
-                        if (auto presenter = AppWindow().Presenter().try_as<Microsoft::UI::Windowing::OverlappedPresenter>())
+                        // 居中：XAML 首次布局可能改了窗口尺寸，显示后再算一遍才准（同尺寸幂等）
+                        CenterOnPrimaryWorkArea();
+                    }
+                    else
+                    {
+                        ApplyWindowPlacement();
+                        if (m_placementValid && m_placementMaximize)
                         {
-                            presenter.Maximize();
+                            if (auto presenter = AppWindow().Presenter().try_as<Microsoft::UI::Windowing::OverlappedPresenter>())
+                            {
+                                presenter.Maximize();
+                            }
                         }
                     }
                 }
@@ -549,7 +560,9 @@ MainWindow::MainWindow()
 
     // ---------------- 窗口位置 / 尺寸记忆 ----------------
 
-    // 读库 → 换算 → 夹到可见范围 → 套用。没有记录时保持系统默认尺寸（等价于旧行为）。
+    // 读库 → 换算 → 夹到可见范围 → 套用。
+    //   · 开启「记住窗口大小」（默认）+ 有合法记录 → 还原上次的位置 / 大小（含最大化）
+    //   · 首次启动 / 没有记录 / 记录损坏 / 用户关掉了开关 → 居中到主显示器
     void MainWindow::ApplySavedWindowPlacement()
     {
         auto& services = Services::AppServices::Instance();
@@ -565,31 +578,95 @@ MainWindow::MainWindow()
         }
 
         auto& settings = services.Settings();
+        bool const remember = settings.GetBool(kKeyWindowRemember, true);
         int const dipW = static_cast<int>(settings.GetInt64(kKeyWindowW));
         int const dipH = static_cast<int>(settings.GetInt64(kKeyWindowH));
-        if (dipW < kMinWindowW || dipH < kMinWindowH)
+        bool const hasRecord = (dipW >= kMinWindowW && dipH >= kMinWindowH);
+
+        if (remember && hasRecord)
+        {
+            int const dipX = static_cast<int>(settings.GetInt64(kKeyWindowX));
+            int const dipY = static_cast<int>(settings.GetInt64(kKeyWindowY));
+
+            m_placementDipX = dipX;
+            m_placementDipY = dipY;
+            m_placementDipW = dipW;
+            m_placementDipH = dipH;
+            m_placementMaximize = settings.GetBool(kKeyWindowMax);
+            m_placementValid = true;
+
+            // 记下「刚读出来的值」，好让紧接着的防抖保存因为值没变而跳过这次写库。
+            m_savedX = dipX;
+            m_savedY = dipY;
+            m_savedW = dipW;
+            m_savedH = dipH;
+            m_savedMaximize = m_placementMaximize;
+            m_savedValid = true;
+
+            ApplyWindowPlacement();
+            return;
+        }
+
+        // 没有可用的记录（或用户不想记住）→ 居中。首次启动就不再让系统随手丢一个位置了。
+        m_placementCenter = true;
+        CenterOnPrimaryWorkArea();
+    }
+
+    // 把窗口居中到【主显示器】的工作区（任务栏之外那块）。
+    // 用 SPI_GETWORKAREA 而不是 EnumerateWorkAreas().front()：前者按定义就是主屏工作区，
+    // 后者依赖枚举顺序，拔掉显示器 / 改变主屏后不保证还是主屏。
+    // SetWindowPos 不改可见性（见文件顶部说明），所以可以在窗口显示之前静默居中。
+    void MainWindow::CenterOnPrimaryWorkArea()
+    {
+        auto appWindow = AppWindow();
+        HWND hwnd = appWindow ? reinterpret_cast<HWND>(appWindow.Id().Value) : nullptr;
+        if (hwnd == nullptr || !::IsWindow(hwnd))
         {
             return;
         }
-        int const dipX = static_cast<int>(settings.GetInt64(kKeyWindowX));
-        int const dipY = static_cast<int>(settings.GetInt64(kKeyWindowY));
 
-        m_placementDipX = dipX;
-        m_placementDipY = dipY;
-        m_placementDipW = dipW;
-        m_placementDipH = dipH;
-        m_placementMaximize = settings.GetBool(kKeyWindowMax);
-        m_placementValid = true;
+        // 尺寸保持不动（此时是 XAML / 系统的默认尺寸），只挪位置。
+        RECT wr{};
+        if (!::GetWindowRect(hwnd, &wr))
+        {
+            return;
+        }
+        int w = wr.right - wr.left;
+        int h = wr.bottom - wr.top;
+        if (w <= 0 || h <= 0)
+        {
+            return;   // 窗口还没定尺寸（构造函数早期）→ 留给首次 Activated 那遍
+        }
 
-        // 记下「刚读出来的值」，好让紧接着的防抖保存因为值没变而跳过这次写库。
-        m_savedX = dipX;
-        m_savedY = dipY;
-        m_savedW = dipW;
-        m_savedH = dipH;
-        m_savedMaximize = m_placementMaximize;
-        m_savedValid = true;
+        RECT wa{};
+        if (!::SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0))
+        {
+            auto const areas = EnumerateWorkAreas();
+            if (areas.empty())
+            {
+                return;
+            }
+            wa = RECT{ areas.front().x, areas.front().y,
+                       areas.front().x + areas.front().w, areas.front().y + areas.front().h };
+        }
+        int const waW = wa.right - wa.left;
+        int const waH = wa.bottom - wa.top;
+        if (waW <= 0 || waH <= 0)
+        {
+            return;
+        }
 
-        ApplyWindowPlacement();
+        // 窗口比工作区还大时不撑爆屏幕（小屏笔记本上会真的发生）
+        if (w > waW)
+        {
+            w = waW;
+        }
+        if (h > waH)
+        {
+            h = waH;
+        }
+        ::SetWindowPos(hwnd, nullptr, wa.left + (waW - w) / 2, wa.top + (waH - h) / 2, w, h,
+                       SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     void MainWindow::ApplyWindowPlacement()
@@ -671,6 +748,12 @@ MainWindow::MainWindow()
     {
         auto& services = Services::AppServices::Instance();
         if (!services.Initialized())
+        {
+            return;
+        }
+        // 用户把「记住窗口大小」关掉了 → 不写库。库里的老记录留着不动：
+        // 哪天重新打开开关，还能接着上次的位置，而不是从零开始。
+        if (!services.Settings().GetBool(kKeyWindowRemember, true))
         {
             return;
         }
