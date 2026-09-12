@@ -56,8 +56,10 @@ namespace winrt::GameLibrary::implementation
         void ConfigureBorderlessWindow();
 
         // ---- 窗口位置 / 尺寸记忆 ----
-        // 读库 → 算出目标矩形（物理像素）；无记录或记录不合法时什么都不做。
+        // 读库 → 算出目标矩形（物理像素）；无记录或记录不合法时改为「居中到主显示器」。
         void ApplySavedWindowPlacement();
+        // 把窗口居中到主显示器工作区（首次启动 / 关掉「记住窗口大小」时用）。
+        void CenterOnPrimaryWorkArea();
         // 把算好的目标矩形套用到窗口上。可重复调用（幂等），已最大化时直接跳过。
         void ApplyWindowPlacement();
         // 把当前窗口的【还原矩形】+ 最大化状态写回 settings 表。
@@ -119,9 +121,10 @@ namespace winrt::GameLibrary::implementation
         // 窗口位置 / 尺寸记忆。
         // 存库用【逻辑像素 DIP】，还原时按当前显示器 DPI 换算成物理像素 ——
         // 这样换显示器 / 改缩放后，窗口的视觉大小不会跟着变。
-        bool m_placementValid = false;      // 库里有可用记录
+        bool m_placementValid = false;      // 库里有可用记录且准备套用
+        bool m_placementCenter = false;     // 本次改为「居中」而非还原记录
         bool m_placementMaximize = false;   // 上次退出时是最大化
-        bool m_placementActivated = false;  // 「首帧还原 + 最大化」只做一次
+        bool m_placementActivated = false;  // 「首帧还原 / 居中 + 最大化」只做一次
         int m_placementDipX = 0;            // 目标矩形（DIP，屏幕坐标）
         int m_placementDipY = 0;
         int m_placementDipW = 0;
