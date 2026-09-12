@@ -10,6 +10,7 @@
 #include "Views/SettingsPage.xaml.h"
 
 #include "Services/AppServices.h"
+#include "Services/GamepadFocus.h"
 #include "Services/Localization.h"
 #include "Services/VisualEffects.h"
 
@@ -308,6 +309,18 @@ MainWindow::MainWindow()
             }
             m_navTimeout.Stop();
             m_navBusy = false;
+            // 手柄用过的用户：把焦点送进新页面。不然焦点还停在顶栏那个导航按钮上，
+            // 推方向键会先沿着顶栏走，感觉像"没反应"。
+            // 等一帧再找：Navigated 触发时页面还没完成布局，直接找第一个可聚焦元素可能落空。
+            if (m_gamepadActive)
+            {
+                if (auto queue = DispatcherQueue())
+                {
+                    queue.TryEnqueue([this]() {
+                        Services::GamepadFocus::EnsureFocusInside(ContentFrame());
+                    });
+                }
+            }
             if (!m_pendingRoute.empty())
             {
                 auto pending = m_pendingRoute;
@@ -388,51 +401,14 @@ MainWindow::MainWindow()
         }
     }
 
-    // 手柄导航：方向键/手柄移动、A 确认、B 返回、LB/RB 顶栏循环切换。
-    // 受 settings 的 gamepad_enabled 控制；无手柄时轮询线程静默。
+    // 手柄导航。分工：
+    //   LB / RB      → 顶栏前进 / 后退（chrome 专属，页面无权拦截）
+    //   弹窗打开时   → 方向键只在弹窗内部转，B 关弹窗
+    //   其余         → 先问当前页面，再走通用焦点导航，最后才轮到全局兜底（B 返回上一页）
     void MainWindow::InitGamepadNavigator()
     {
         m_navigator = std::make_unique<Services::GamepadNavigator>();
-        m_navigator->SetHandler([this](Services::NavAction action) {
-            switch (action)
-            {
-            case Services::NavAction::PrevTab:
-                CycleTopNav(-1);
-                break;
-            case Services::NavAction::NextTab:
-                CycleTopNav(1);
-                break;
-            case Services::NavAction::Confirm:
-                ActivateCurrentNav();
-                break;
-            case Services::NavAction::Back:
-                if (SearchOverlay().Visibility() == Visibility::Visible)
-                {
-                    CloseSearchOverlay();
-                }
-                else if (HelpOverlay().Visibility() == Visibility::Visible)
-                {
-                    CloseHelpOverlay();
-                }
-                else if (ImportOverlay().Visibility() == Visibility::Visible)
-                {
-                    CloseImportOverlay();
-                }
-                else if (ContentFrame().CanGoBack())
-                {
-                    ContentFrame().GoBack();
-                }
-                break;
-            case Services::NavAction::Left:
-                CycleTopNav(-1);
-                break;
-            case Services::NavAction::Right:
-                CycleTopNav(1);
-                break;
-            default:
-                break;
-            }
-        });
+        m_navigator->SetHandler([this](Services::NavAction action) { HandleGamepadAction(action); });
 
         auto& services = Services::AppServices::Instance();
         bool enabled = services.Initialized()
@@ -440,6 +416,109 @@ MainWindow::MainWindow()
             : true;
         m_navigator->SetEnabled(enabled);
         m_navigator->Start();
+    }
+
+    void MainWindow::HandleGamepadAction(Services::NavAction action)
+    {
+        m_gamepadActive = true;
+
+        // LB / RB 切顶栏。放在最前面：无论焦点在哪、弹窗开着没有，切页签都该有效。
+        if (action == Services::NavAction::PrevTab)
+        {
+            CycleTopNav(-1);
+            return;
+        }
+        if (action == Services::NavAction::NextTab)
+        {
+            CycleTopNav(1);
+            return;
+        }
+
+        // 加载遮罩期间吞掉所有输入 —— 否则用户会在看不见的地方把焦点挪得到处都是。
+        if (LoadingOverlay().Visibility() == Visibility::Visible)
+        {
+            return;
+        }
+
+        // 弹出层（ContentDialog / ComboBox 下拉）在最上面，而且它的内容不在窗口 Content() 子树里。
+        // 不单独处理的话，对话框还开着、手柄已经在操作背后那个看不见的页面了。
+        // 这里只放行方向键和 A（在弹窗内部导航/点按钮），B 一律吞掉，防止绕到后面去。
+        if (auto popup = Services::GamepadFocus::TopmostOpenPopup(Content()))
+        {
+            if (action != Services::NavAction::Back)
+            {
+                Services::GamepadFocus::HandleNavAction(popup, action);
+            }
+            return;
+        }
+
+        // 弹窗优先：开着的时候方向键只在弹窗内部转，别让焦点跑到背后的页面上。
+        if (SearchOverlay().Visibility() == Visibility::Visible)
+        {
+            if (action == Services::NavAction::Back)
+            {
+                CloseSearchOverlay();
+                return;
+            }
+            Services::GamepadFocus::HandleNavAction(SearchOverlay(), action);
+            return;
+        }
+        if (HelpOverlay().Visibility() == Visibility::Visible)
+        {
+            if (action == Services::NavAction::Back)
+            {
+                CloseHelpOverlay();
+                return;
+            }
+            Services::GamepadFocus::HandleNavAction(HelpOverlay(), action);
+            return;
+        }
+        if (ImportOverlay().Visibility() == Visibility::Visible)
+        {
+            if (action == Services::NavAction::Back)
+            {
+                CloseImportOverlay();
+                return;
+            }
+            Services::GamepadFocus::HandleNavAction(ImportOverlay(), action);
+            return;
+        }
+
+        // 当前页面有话语权（首页要自己管轨道，库页要自己管网格项）。
+        if (HandlePageNavAction(action))
+        {
+            return;
+        }
+
+        // 通用焦点导航。scope 用 Content()（窗口根 Grid）而不是 ContentFrame()：
+        // 顶栏的 Games / Library / 搜索 / 帮助 / 设置 也在同一个根里，得让手柄够得着。
+        if (Services::GamepadFocus::HandleNavAction(Content(), action))
+        {
+            return;
+        }
+
+        // 兜底：B 返回上一页。
+        if (action == Services::NavAction::Back && ContentFrame().CanGoBack())
+        {
+            ContentFrame().GoBack();
+        }
+    }
+
+    bool MainWindow::HandlePageNavAction(Services::NavAction action)
+    {        auto content = ContentFrame().Content();
+        if (content == nullptr)
+        {
+            return false;
+        }
+        if (auto home = content.try_as<winrt::GameLibrary::HomePage>())
+        {
+            return winrt::get_self<winrt::GameLibrary::implementation::HomePage>(home)->HandleNavAction(action);
+        }
+        if (auto library = content.try_as<winrt::GameLibrary::LibraryPage>())
+        {
+            return winrt::get_self<winrt::GameLibrary::implementation::LibraryPage>(library)->HandleNavAction(action);
+        }
+        return false;
     }
 
     // 顶栏导航项循环（home / library）

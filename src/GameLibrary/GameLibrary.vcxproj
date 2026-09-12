@@ -236,6 +236,7 @@
     <ClInclude Include="Licensing\LicenseCrypto.h" />
     <ClInclude Include="Services\AppServices.h" />                                                                     
     <ClInclude Include="Services\GamepadNavigator.h" />                                                                
+    <ClInclude Include="Services\GamepadFocus.h" />                                                                    
     <ClInclude Include="Services\Localization.h" />                                                                    
     <ClInclude Include="Services\SessionTracker.h" />                                                                  
 <ClInclude Include="Services\MetadataService.h" />
@@ -292,6 +293,7 @@
     </ClCompile>
     <ClCompile Include="Services\AppServices.cpp" />                                                                   
     <ClCompile Include="Services\GamepadNavigator.cpp" />                                                              
+    <ClCompile Include="Services\GamepadFocus.cpp" />                                                                  
     <ClCompile Include="Services\Localization.cpp" />                                                                  
     <ClCompile Include="Services\SessionTracker.cpp" />                                                                
     <ClCompile Include="Services\MetadataService.cpp" />

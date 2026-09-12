@@ -116,6 +116,10 @@
                         <Setter Property="VerticalContentAlignment" Value="Stretch" />
                         <Setter Property="Background" Value="Transparent" />
                         <Setter Property="BorderThickness" Value="0" />
+                        <!-- 容器的模板被换成了光板 Grid（下面），模板里不可能有 Focused 状态；
+                             手柄焦点框只能靠系统画，所以要显式打开 —— 否则手柄推方向键时屏幕毫无反应。 -->
+                        <Setter Property="UseSystemFocusVisuals" Value="True" />
+                        <Setter Property="FocusVisualMargin" Value="-3" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="GridViewItem">
@@ -139,6 +143,8 @@
                         <Setter Property="Margin" Value="0,0,0,12" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="UseSystemFocusVisuals" Value="True" />
+                        <Setter Property="FocusVisualMargin" Value="-3" />
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>

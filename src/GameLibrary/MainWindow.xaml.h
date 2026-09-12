@@ -74,6 +74,10 @@ namespace winrt::GameLibrary::implementation
         void NavigateToTag(hstring const& tag);
         void UpdateNavSelection(hstring const& tag);
         void InitGamepadNavigator();
+        // 手柄动作总入口：分派给弹窗 / 当前页面 / 通用焦点导航 / 全局兜底
+        void HandleGamepadAction(Services::NavAction action);
+        // 交给当前页面自己处理（返回 true = 页面已消化）
+        bool HandlePageNavAction(Services::NavAction action);
 
         void OpenSearchOverlay();
         void CloseSearchOverlay();
@@ -108,6 +112,9 @@ namespace winrt::GameLibrary::implementation
         int m_searchGen = 0;
         std::uint64_t m_languageToken = 0;
         std::unique_ptr<Services::GamepadNavigator> m_navigator;
+        // 用户真的用手柄操作过没有。只有用过才在换页后自动给焦点 ——
+        // 纯鼠标用户不该看到凭空冒出来的焦点框。
+        bool m_gamepadActive = false;
         int m_navIndex = 0;
         bool m_navInitialized = false;
         std::wstring m_currentRoute;
