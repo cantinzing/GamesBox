@@ -122,10 +122,10 @@ namespace winrt::GameLibrary::implementation
         bool m_placementValid = false;      // 库里有可用记录
         bool m_placementMaximize = false;   // 上次退出时是最大化
         bool m_placementActivated = false;  // 「首帧还原 + 最大化」只做一次
-        int m_placementX = 0;               // 目标矩形（物理像素，屏幕坐标）
-        int m_placementY = 0;
-        int m_placementW = 0;
-        int m_placementH = 0;
+        int m_placementDipX = 0;            // 目标矩形（DIP，屏幕坐标）
+        int m_placementDipY = 0;
+        int m_placementDipW = 0;
+        int m_placementDipH = 0;
         bool m_savedValid = false;          // 已落库的 DIP 值缓存，用来跳过重复写入
         int m_savedX = 0;
         int m_savedY = 0;
