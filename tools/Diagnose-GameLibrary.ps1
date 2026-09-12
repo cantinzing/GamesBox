@@ -267,15 +267,7 @@ Section "4b. APP STARTUP LOG (written by the app itself)"
 # GameLibrary appends a line per startup phase to %LOCALAPPDATA%\GameLibrary\startup.log,
 # including on the failure paths. It is the single most useful artifact in this report:
 # it says exactly how far the app got before it gave up.
-# Builds from before the log/data directories were unified wrote it under GameCentral\,
-# so fall back to that path - this script must also work against an older install.
-# NOTE: 'GameCentral' below is a legacy on-disk directory name, NOT a product name.
-# Do not rename it when unifying branding, or older installs stop being diagnosable.
 $appLog = Join-Path $env:LOCALAPPDATA 'GameLibrary\startup.log'
-if (-not (Test-Path -LiteralPath $appLog)) {
-    $legacyLog = Join-Path $env:LOCALAPPDATA 'GameCentral\startup.log'
-    if (Test-Path -LiteralPath $legacyLog) { $appLog = $legacyLog }
-}
 if (Test-Path -LiteralPath $appLog) {
     $li = Get-Item -LiteralPath $appLog
     W ("Log file : " + $appLog)
@@ -364,9 +356,9 @@ try {
         $evts += $got
     }
     # Anything that mentions our app wins over the noise from other software.
-    $mine = @($evts | Where-Object { $_.Message -match 'GameLibrary|GameCentral' } | Sort-Object TimeCreated -Descending | Select-Object -First 6)
+    $mine = @($evts | Where-Object { $_.Message -match 'GameLibrary' } | Sort-Object TimeCreated -Descending | Select-Object -First 6)
     if ($mine.Count -gt 0) {
-        W "Events mentioning GameLibrary / GameCentral (these are the interesting ones):"
+        W "Events mentioning GameLibrary (these are the interesting ones):"
         $show = $mine
     } else {
         W "No event mentions GameLibrary. A silent exit() or a swallowed XAML exception"
