@@ -208,7 +208,8 @@ Pushing to `main` or triggering `workflow_dispatch` builds and packages the app 
 - **GameLibrary-portable-win-x64** (self-contained zip)
   - Unzip and double-click `GameLibrary.exe` to run — no runtime install, no certificate, and **no admin rights** required. Works on a clean Windows 10 (1809+) / 11 x64.
 - **GameLibrary-setup-win-x64** (traditional installer `setup.exe`)
-  - Double-click to run the install wizard — **fully UAC-free**. The install scope is the current user: it installs to `%LOCALAPPDATA%\Programs\GameLibrary` by default and creates **current-user** Start Menu / desktop shortcuts. It never writes to `Program Files` or `HKLM`, so no elevation is triggered. The installed files are identical to the self-contained zip; uninstalling also needs no admin (remove it per-user under “Settings → Apps”).
+  - Double-click to run the install wizard; it installs to `C:\Program Files\GameLibrary` (a **machine-wide install that triggers a UAC elevation prompt**; standard accounts cannot install) and creates All Users Start Menu / desktop shortcuts. The installed files are identical to the self-contained zip; uninstalling also needs admin rights (remove it under “Settings → Apps”).
+  - Note: app data (database / assets / logs) still lives in `%LOCALAPPDATA%\GameLibrary\`, per user — it does not move with the install location.
 - **GameLibrary-MSIX-x64** (sideload MSIX)
   - See the “MSIX sideload” flow above. The downloaded zip unpacks to that flow’s `AppPackages` content (`*.msix` + `Add-AppPackage.ps1`). The signing cert `GameLibrary_TemporaryKey.pfx` (empty password) is **not in the artifact** — get it from the repo at `src/GameLibrary.Package/GameLibrary_TemporaryKey.pfx` and install it into “Trusted People” before installing.
 - **GameLibrary-store-msixbundle** (Store submission package, unsigned `.msixbundle`)
